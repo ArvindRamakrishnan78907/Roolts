@@ -3,7 +3,7 @@ Multi-AI Chat Routes
 Provides endpoints for the AI Hub with smart model routing
 """
 
-import asyncio
+
 from flask import Blueprint, jsonify, request
 
 from routes.auth import get_current_user, require_auth
@@ -95,16 +95,7 @@ def chat():
         return jsonify({'error': 'Prompt is required'}), 400
     
     service = get_user_ai_service()
-    
-    # Run async function in sync context
-    loop = asyncio.new_event_loop()
-    asyncio.set_event_loop(loop)
-    try:
-        result = loop.run_until_complete(
-            service.chat(prompt, model, system_prompt)
-        )
-    finally:
-        loop.close()
+    result = service.chat(prompt, model, system_prompt)
     
     if 'error' in result:
         return jsonify(result), 400
@@ -128,13 +119,7 @@ def suggest():
         return jsonify({'suggestions': []})
     
     service = get_user_ai_service()
-    
-    loop = asyncio.new_event_loop()
-    asyncio.set_event_loop(loop)
-    try:
-        result = loop.run_until_complete(service.suggest(text))
-    finally:
-        loop.close()
+    result = service.suggest(text)
     
     return jsonify(result)
 

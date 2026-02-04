@@ -6,6 +6,7 @@ Handles code explanation, diagram generation, and resource suggestions
 import os
 import re
 from flask import Blueprint, jsonify, request
+from services.multi_ai import MultiAIService
 
 ai_bp = Blueprint('ai', __name__)
 
@@ -357,3 +358,77 @@ def suggest_commit_message():
         'suggestions': suggestions,
         'recommended': suggestions[0]
     })
+
+
+@ai_bp.route('/review', methods=['POST'])
+def review_code():
+    """Analyze code for bugs, security issues, and style improvements."""
+    data = request.get_json()
+    code = data.get('code', '')
+    language = data.get('language', 'plaintext')
+
+    if not code:
+        return jsonify({'error': 'Code is required'}), 400
+    
+    # Initialize Multi-AI Service
+    service = MultiAIService()
+    
+    # Strict System Prompt for JSON Output
+    system_prompt = (
+        "You are a strict automated code review agent. Your job is to analyze the provided code "
+        "for bugs, security vulnerabilities, and code style issues. "
+        "You MUST return the result EXACTLY as a valid JSON object with the following structure: "
+        "{ 'issues': [ { 'type': 'error'|'warning'|'info', 'line': <number_or_null>, "
+        "'message': '<concise_description>', 'fix': '<suggested_fix_code_or_explanation>' } ] }. "
+        "Do not include any markdown formatting (like ```json), commentary, or extra text outside the JSON. "
+        "If the code is perfect, return { 'issues': [] }."
+    )
+    
+    prompt = f"Review this {language} code:\n\n{code}"
+    
+    try:
+        # Prefer 'deepseek' or 'claude' for reasoning, fall back to 'auto'
+        # Since we don't have explicit model selection in the request, we rely on the service's smart router
+        # But we can hint via the system prompt context. 
+        # For now, we will use 'auto' which should pick a strong model for coding.
+        result = service.chat(prompt, model='deepseek', system_prompt=system_prompt)
+        
+        # The service returns a dict, we need to extract the content and parse it as JSON
+        # The MultiAIService.chat returns: { 'content': ..., 'provider': ..., 'model': ... }
+        content = result.get('content', '')
+        
+        # Clean up potential markdown formatting if the AI ignores strict instructions
+        content = content.strip()
+        if content.startswith('```json'):
+            content = content[7:]
+        if content.startswith('```'):
+            content = content[3:]
+        if content.endswith('```'):
+            content = content[:-3]
+        content = content.strip()
+        
+        import json
+        try:
+            review_data = json.loads(content)
+        except json.JSONDecodeError:
+            # Fallback if AI fails to generate valid JSON
+            review_data = {
+                'issues': [
+                    {
+                        'type': 'warning',
+                        'line': None,
+                        'message': 'AI failed to generate structured review. Raw output attached.',
+                        'fix': content
+                    }
+                ]
+            }
+            
+        return jsonify({
+            'review': review_data,
+            'provider': result.get('provider'),
+            'model': result.get('model')
+        })
+
+    except Exception as e:
+        print(f"Code review failed: {str(e)}")
+        return jsonify({'error': str(e)}), 500

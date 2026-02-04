@@ -98,6 +98,31 @@ class SocialToken(db.Model):
         }
 
 
+class Snippet(db.Model):
+    """User code snippets."""
+    __tablename__ = 'snippets'
+
+    id = db.Column(db.Integer, primary_key=True)
+    user_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=True)  # Optional for now
+    title = db.Column(db.String(200), nullable=False)
+    content = db.Column(db.Text, nullable=False)
+    language = db.Column(db.String(50), default='plaintext')
+    description = db.Column(db.Text)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    def to_dict(self):
+        """Convert snippet to dictionary."""
+        return {
+            'id': self.id,
+            'title': self.title,
+            'content': self.content,
+            'language': self.language,
+            'description': self.description,
+            'created_at': self.created_at.isoformat() if self.created_at else None
+        }
+
+
 def init_db(app):
     """Initialize the database with the Flask app."""
     # Configure SQLite database

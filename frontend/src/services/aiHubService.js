@@ -51,6 +51,16 @@ export const aiHubService = {
         return response.data;
     },
 
+    /**
+     * Analyze code for bugs and improvements
+     * @param {string} code - The code to review
+     * @param {string} language - Programming language
+     */
+    reviewCode: async (code, language) => {
+        const response = await api.post('/ai/review', { code, language });
+        return response.data;
+    },
+
     // ============ Model Info ============
 
     /**

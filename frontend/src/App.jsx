@@ -54,13 +54,20 @@ import {
     useLearningStore,
     useNotesStore,
     useTerminalStore,
-    useSettingsStore
+    useSettingsStore,
+    useSnippetStore
 } from './store';
 import { githubService } from './services/githubService';
 import { notesService } from './services/notesService';
 import { executorService } from './services/executorService';
 import { terminalService } from './services/terminalService';
 import WebPreview from './components/WebPreview';
+import ReviewPanel from './components/ReviewPanel';
+import SnippetPanel from './components/SnippetPanel';
+import PortfolioGenerator from './components/PortfolioGenerator';
+import DeploymentModal from './components/DeploymentModal';
+import { useVoiceCommands } from './hooks/useVoiceCommands';
+import { FiMic, FiMicOff, FiLayout, FiUploadCloud } from 'react-icons/fi';
 
 // File Explorer Component
 function FileExplorer() {
@@ -1356,7 +1363,9 @@ function RightPanel({ style, editorMinimized }) {
         { id: 'github', label: 'GitHub', icon: <FiGithub /> },
         { id: 'social', label: 'Social', icon: <FiShare2 /> },
         { id: 'notes', label: 'Notes', icon: <FiFileText /> },
-        { id: 'learn', label: 'Learn', icon: <FiBookOpen /> }
+        { id: 'learn', label: 'Learn', icon: <FiBookOpen /> },
+        { id: 'review', label: 'Review', icon: <FiCheckCircle /> },
+        { id: 'snippets', label: 'Snippets', icon: <FiCode /> }
     ];
 
     // Calculate style - when editor is minimized and panel is expanded, limit max width
@@ -1397,6 +1406,8 @@ function RightPanel({ style, editorMinimized }) {
             {rightPanelTab === 'social' && <SocialPanel />}
             {rightPanelTab === 'notes' && <NoteEditorPanel />}
             {rightPanelTab === 'learn' && <LearningPanel />}
+            {rightPanelTab === 'review' && <ReviewPanel />}
+            {rightPanelTab === 'snippets' && <SnippetPanel />}
         </div>
     );
 }
@@ -1461,6 +1472,52 @@ function NewFileModal() {
                     <button className="btn btn--primary" onClick={handleCreate}>
                         <FiPlus /> Create File
                     </button>
+                </div>
+            </div>
+        </div>
+    );
+}
+
+// Portfolio Generator Modal
+function PortfolioGeneratorModal() {
+    const { modals, closeModal } = useUIStore();
+
+    if (!modals.portfolioGenerator) return null;
+
+    return (
+        <div className="modal-overlay" onClick={() => closeModal('portfolioGenerator')}>
+            <div className="modal" onClick={(e) => e.stopPropagation()} style={{ width: '900px', maxWidth: '95vw', height: '90vh' }}>
+                <div className="modal__header">
+                    <h3 className="modal__title">Portfolio Generator</h3>
+                    <button className="btn btn--ghost btn--icon" onClick={() => closeModal('portfolioGenerator')}>
+                        <FiX />
+                    </button>
+                </div>
+                <div className="modal__body" style={{ padding: '0', overflow: 'hidden' }}>
+                    <PortfolioGenerator />
+                </div>
+            </div>
+        </div>
+    );
+}
+
+// Deployment Modal Component
+function DeploymentModalComponent() {
+    const { modals, closeModal } = useUIStore();
+
+    if (!modals.deployment) return null;
+
+    return (
+        <div className="modal-overlay" onClick={() => closeModal('deployment')}>
+            <div className="modal" onClick={(e) => e.stopPropagation()} style={{ width: '500px', maxWidth: '95vw' }}>
+                <div className="modal__header">
+                    <h3 className="modal__title">Deploy to Cloud</h3>
+                    <button className="btn btn--ghost btn--icon" onClick={() => closeModal('deployment')}>
+                        <FiX />
+                    </button>
+                </div>
+                <div className="modal__body">
+                    <DeploymentModal />
                 </div>
             </div>
         </div>
@@ -1681,7 +1738,9 @@ function SettingsModal() {
     const { modals, closeModal } = useUIStore();
     const {
         theme, backgroundImage, backgroundOpacity, format, features,
+        uiFontSize, uiFontFamily,
         setTheme, setBackgroundImage, setBackgroundOpacity,
+        setUiFontSize, setUiFontFamily,
         updateFormat, toggleFeature, setFeature
     } = useSettingsStore();
     const [activeTab, setActiveTab] = useState('theme');
@@ -1804,6 +1863,35 @@ function SettingsModal() {
                                             style={{ width: '100%' }}
                                         />
                                     </div>
+
+                                    <div className="form-group" style={{ marginBottom: '1.5rem' }}>
+                                        <label>UI Font Size ({uiFontSize}px)</label>
+                                        <input
+                                            type="range"
+                                            min="12"
+                                            max="20"
+                                            value={uiFontSize}
+                                            onChange={(e) => setUiFontSize(parseInt(e.target.value))}
+                                            style={{ width: '100%' }}
+                                        />
+                                    </div>
+
+                                    <div className="form-group" style={{ marginBottom: '1.5rem' }}>
+                                        <label>UI Font Family</label>
+                                        <select
+                                            className="input-select"
+                                            value={uiFontFamily}
+                                            onChange={(e) => setUiFontFamily(e.target.value)}
+                                            style={{ width: '100%' }}
+                                        >
+                                            <option value="Inter">Inter (Default)</option>
+                                            <option value="Roboto">Roboto</option>
+                                            <option value="Segoe UI">Segoe UI</option>
+                                            <option value="Arial">Arial</option>
+                                            <option value="Helvetica">Helvetica</option>
+                                            <option value="'Courier New'">Courier New (Monospace)</option>
+                                        </select>
+                                    </div>
                                 </div>
                             )}
 
@@ -1916,14 +2004,20 @@ function App() {
     const activeFile = files.find(f => f.id === activeFileId);
 
     // Settings
-    const { theme, backgroundImage, backgroundOpacity } = useSettingsStore();
+    const { theme, backgroundImage, backgroundOpacity, uiFontSize, uiFontFamily } = useSettingsStore();
 
-    // Apply Theme
+    // Apply Theme and UI Settings
     useEffect(() => {
         // Map Monaco themes to CSS themes
         const cssTheme = theme === 'light' ? 'light' : 'dark';
         document.documentElement.setAttribute('data-theme', cssTheme);
-    }, [theme]);
+
+        // Apply UI Settings
+        document.documentElement.style.fontSize = `${uiFontSize}px`;
+        if (uiFontFamily) {
+            document.documentElement.style.setProperty('--font-sans', uiFontFamily);
+        }
+    }, [theme, uiFontSize, uiFontFamily]);
 
     // Handle resize mouse events
     useEffect(() => {
@@ -2084,6 +2178,35 @@ function App() {
         setExecuting(false);
     };
 
+    // Voice Commands Integration
+    const voiceCommands = {
+        'run code': () => handleRunCode(),
+        'save file': () => handleSave(),
+        'new file': () => openModal('newFile'),
+        'open settings': () => openModal('settings'),
+        'open portfolio': () => openModal('portfolioGenerator'),
+        'review code': () => {
+            if (!rightPanelOpen) toggleRightPanel();
+            setRightPanelTab('review');
+        },
+        'open terminal': () => {
+            if (!terminalOpen) setTerminalOpen(true);
+        },
+        'close terminal': () => {
+            if (terminalOpen) setTerminalOpen(false);
+        }
+    };
+
+    const { isListening, toggleListening, feedback, isSupported } = useVoiceCommands(voiceCommands);
+
+    // Show voice feedback
+    useEffect(() => {
+        if (feedback) {
+            addNotification({ type: feedback.type, message: feedback.message });
+        }
+    }, [feedback]);
+
+
     return (
         <div className="app">
             {/* Header */}
@@ -2093,6 +2216,18 @@ function App() {
                     <h1 className="header__title">Roolts</h1>
                 </div>
                 <div className="header__actions">
+                    {/* Voice Control Button */}
+                    {isSupported && (
+                        <button
+                            className={`btn btn--icon ${isListening ? 'btn--danger pulsing' : 'btn--ghost'}`}
+                            onClick={toggleListening}
+                            title={isListening ? "Stop Listening" : "Start Voice Control"}
+                            style={{ marginRight: '8px' }}
+                        >
+                            {isListening ? <FiMicOff /> : <FiMic />}
+                        </button>
+                    )}
+
                     <button
                         className="btn btn--success"
                         onClick={handleRunCode}
@@ -2105,6 +2240,16 @@ function App() {
                             <><FiPlay /> Run</>
                         )}
                     </button>
+                    <button
+                        className="btn btn--secondary"
+                        onClick={() => {
+                            if (!rightPanelOpen) toggleRightPanel();
+                            setRightPanelTab('review');
+                        }}
+                        title="AI Code Review"
+                    >
+                        <FiCheckCircle /> Review
+                    </button>
                     <button className="btn btn--ghost btn--icon" onClick={handleSave} title="Save">
                         <FiSave />
                     </button>
@@ -2116,6 +2261,12 @@ function App() {
                     </button>
                     <button className="btn btn--ghost btn--icon" onClick={() => openModal('settings')} title="Settings">
                         <FiSettings />
+                    </button>
+                    <button className="btn btn--ghost btn--icon" onClick={() => openModal('portfolioGenerator')} title="Generate Portfolio">
+                        <FiLayout />
+                    </button>
+                    <button className="btn btn--ghost btn--icon" onClick={() => openModal('deployment')} title="Deploy to Cloud">
+                        <FiUploadCloud />
                     </button>
 
                 </div>
@@ -2235,6 +2386,8 @@ function App() {
             <NewFileModal />
             <CompilerManagerModal />
             <SettingsModal />
+            <PortfolioGeneratorModal />
+            <DeploymentModalComponent />
 
             {/* Notifications */}
             <Notifications />

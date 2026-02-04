@@ -196,20 +196,26 @@ export const useLearningStore = create((set) => ({
     explanation: null,
     diagram: null,
     resources: [],
+    reviewResults: null,
     isGenerating: false,
+    isReviewing: false,
     activeTab: 'explain',
 
     setExplanation: (explanation) => set({ explanation }),
     setDiagram: (diagram) => set({ diagram }),
     setResources: (resources) => set({ resources }),
+    setReviewResults: (reviewResults) => set({ reviewResults }),
     setGenerating: (isGenerating) => set({ isGenerating }),
+    setReviewing: (isReviewing) => set({ isReviewing }),
     setActiveTab: (activeTab) => set({ activeTab }),
 
     reset: () => set({
         explanation: null,
         diagram: null,
         resources: [],
-        isGenerating: false
+        reviewResults: null,
+        isGenerating: false,
+        isReviewing: false
     })
 }));
 
@@ -225,7 +231,9 @@ export const useUIStore = create((set) => ({
         commitPush: false,
         share: false,
         settings: false,
-        compilerManager: false
+        compilerManager: false,
+        portfolioGenerator: false,
+        deployment: false
     },
     notifications: [],
 
@@ -271,6 +279,8 @@ export const useSettingsStore = create(
             theme: 'vs-dark', // vs-dark, light, high-contrast-black
             backgroundImage: null, // Base64 or URL
             backgroundOpacity: 0.1, // 0 to 1
+            uiFontSize: 14,
+            uiFontFamily: 'Inter',
             format: {
                 fontSize: 14,
                 tabSize: 4,
@@ -289,6 +299,8 @@ export const useSettingsStore = create(
             setTheme: (theme) => set({ theme }),
             setBackgroundImage: (image) => set({ backgroundImage: image }),
             setBackgroundOpacity: (opacity) => set({ backgroundOpacity: opacity }),
+            setUiFontSize: (size) => set({ uiFontSize: size }),
+            setUiFontFamily: (family) => set({ uiFontFamily: family }),
             updateFormat: (key, value) => set((state) => ({
                 format: { ...state.format, [key]: value }
             })),
@@ -300,6 +312,8 @@ export const useSettingsStore = create(
             })),
             resetSettings: () => set({
                 theme: 'vs-dark',
+                uiFontSize: 14,
+                uiFontFamily: 'Inter',
                 format: {
                     fontSize: 14,
                     tabSize: 4,
@@ -477,3 +491,20 @@ export const useTerminalStore = create(
         }
     )
 );
+
+// Snippet Store - manages user snippets
+export const useSnippetStore = create((set) => ({
+    snippets: [],
+    isLoading: false,
+
+    setSnippets: (snippets) => set({ snippets }),
+    setLoading: (isLoading) => set({ isLoading }),
+
+    addSnippet: (snippet) => set((state) => ({
+        snippets: [snippet, ...state.snippets]
+    })),
+
+    removeSnippet: (id) => set((state) => ({
+        snippets: state.snippets.filter(s => s.id !== id)
+    }))
+}));

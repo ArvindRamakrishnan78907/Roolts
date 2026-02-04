@@ -15,7 +15,7 @@ class AIProvider(ABC):
     """Abstract base class for AI providers."""
     
     @abstractmethod
-    async def generate(self, prompt: str, system_prompt: str = None) -> Dict[str, Any]:
+    def generate(self, prompt: str, system_prompt: str = None) -> Dict[str, Any]:
         """Generate a response from the AI model."""
         pass
     
@@ -36,7 +36,7 @@ class GeminiProvider(AIProvider):
     def is_configured(self) -> bool:
         return bool(self.api_key)
     
-    async def generate(self, prompt: str, system_prompt: str = None) -> Dict[str, Any]:
+    def generate(self, prompt: str, system_prompt: str = None) -> Dict[str, Any]:
         if not self.is_configured():
             return {'error': 'Gemini API key not configured'}
         
@@ -81,7 +81,7 @@ class ClaudeProvider(AIProvider):
     def is_configured(self) -> bool:
         return bool(self.api_key)
     
-    async def generate(self, prompt: str, system_prompt: str = None) -> Dict[str, Any]:
+    def generate(self, prompt: str, system_prompt: str = None) -> Dict[str, Any]:
         if not self.is_configured():
             return {'error': 'Claude API key not configured'}
         
@@ -132,7 +132,7 @@ class DeepSeekProvider(AIProvider):
     def is_configured(self) -> bool:
         return bool(self.api_key)
     
-    async def generate(self, prompt: str, system_prompt: str = None) -> Dict[str, Any]:
+    def generate(self, prompt: str, system_prompt: str = None) -> Dict[str, Any]:
         if not self.is_configured():
             return {'error': 'DeepSeek API key not configured'}
         
@@ -184,7 +184,7 @@ class QwenProvider(AIProvider):
     def is_configured(self) -> bool:
         return bool(self.api_key)
     
-    async def generate(self, prompt: str, system_prompt: str = None) -> Dict[str, Any]:
+    def generate(self, prompt: str, system_prompt: str = None) -> Dict[str, Any]:
         if not self.is_configured():
             return {'error': 'Qwen API key not configured'}
         
@@ -426,7 +426,7 @@ class MultiAIService:
         return [name for name, provider in self.providers.items() 
                 if provider.is_configured()]
     
-    async def chat(
+    def chat(
         self, 
         prompt: str, 
         model: str = 'auto',
@@ -471,7 +471,7 @@ class MultiAIService:
             provider = self.providers[model]
         
         # Generate response
-        result = await provider.generate(prompt, system_prompt)
+        result = provider.generate(prompt, system_prompt)
         
         # Add metadata
         if 'error' not in result:
@@ -482,7 +482,7 @@ class MultiAIService:
         
         return result
     
-    async def suggest(self, partial_text: str) -> Dict[str, Any]:
+    def suggest(self, partial_text: str) -> Dict[str, Any]:
         """
         Get AI suggestions while user is typing.
         
@@ -512,7 +512,7 @@ class MultiAIService:
         
         prompt = f"Suggest completions for: \"{partial_text}\""
         
-        result = await provider.generate(prompt, system_prompt)
+        result = provider.generate(prompt, system_prompt)
         
         if 'error' in result:
             return {'suggestions': [], 'error': result['error']}
@@ -523,10 +523,19 @@ class MultiAIService:
             # Try to extract JSON array
             match = re.search(r'\[.*?\]', text, re.DOTALL)
             if match:
-                suggestions = json.loads(match.group())
+                json_str = match.group()
+                suggestions = json.loads(json_str)
+                # Ensure it's a list of strings
+                if isinstance(suggestions, list) and all(isinstance(s, str) for s in suggestions):
+                    pass
+                else:
+                    suggestions = [text.strip()]
             else:
                 suggestions = [text.strip()]
-        except:
+        except json.JSONDecodeError:
+            suggestions = [result['response'].strip()]
+        except Exception as e:
+            # Fallback for other errors
             suggestions = [result['response'].strip()]
         
         return {

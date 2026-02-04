@@ -22,6 +22,9 @@ from routes.ai import ai_bp
 from routes.auth import auth_bp
 from routes.ai_hub import ai_hub_bp
 from routes.terminal import terminal_bp
+from routes.snippets import snippets_bp
+from routes.portfolio import portfolio_bp
+from routes.deployment import deployment_bp
 
 
 def create_app():
@@ -51,6 +54,9 @@ def create_app():
     app.register_blueprint(social_bp, url_prefix='/api/social')  # Social posting
     app.register_blueprint(ai_bp, url_prefix='/api/ai')          # AI learning features
     app.register_blueprint(terminal_bp, url_prefix='/api/terminal')  # Terminal
+    app.register_blueprint(snippets_bp, url_prefix='/api/snippets')  # Snippets
+    app.register_blueprint(portfolio_bp, url_prefix='/api/portfolio')  # Portfolio Generator
+    app.register_blueprint(deployment_bp, url_prefix='/api/deployment')  # Deployment
     
     # Health check endpoint
     @app.route('/api/health')
@@ -119,12 +125,12 @@ def create_app():
 app = create_app()
 
 if __name__ == '__main__':
-    print("\n🚀 Roolts Backend Starting...")
+    print("\n>>> Roolts Backend Starting...")
     print("=" * 50)
-    print("📡 API Server: http://localhost:5000")
-    print("📚 API Docs:   http://localhost:5000/")
-    print("🔑 Auth:       /api/auth/*")
-    print("🤖 AI Hub:     /api/ai-hub/*")
+    print("API Server: http://localhost:5000")
+    print("API Docs:   http://localhost:5000/")
+    print("Auth:       /api/auth/*")
+    print("AI Hub:     /api/ai-hub/*")
     print("=" * 50)
     print("\nPress Ctrl+C to stop\n")
     
