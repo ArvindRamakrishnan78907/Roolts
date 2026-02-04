@@ -1,13 +1,16 @@
 import { create } from 'zustand';
+import { persist } from 'zustand/middleware';
 
-// File Store - manages files and editor state
-export const useFileStore = create((set, get) => ({
-    files: [
-        {
-            id: '1',
-            name: 'main.py',
-            path: '/main.py',
-            content: `# Welcome to Roolts!
+// File Store - manages files and editor state (persisted)
+export const useFileStore = create(
+    persist(
+        (set, get) => ({
+            files: [
+                {
+                    id: '1',
+                    name: 'main.py',
+                    path: '/main.py',
+                    content: `# Welcome to Roolts!
 # Start coding here...
 
 def hello_world():
@@ -18,14 +21,14 @@ def hello_world():
 if __name__ == "__main__":
     hello_world()
 `,
-            language: 'python',
-            modified: false
-        },
-        {
-            id: '2',
-            name: 'App.js',
-            path: '/src/App.js',
-            content: `import React from 'react';
+                    language: 'python',
+                    modified: false
+                },
+                {
+                    id: '2',
+                    name: 'App.js',
+                    path: '/src/App.js',
+                    content: `import React from 'react';
 
 function App() {
   return (
@@ -37,101 +40,123 @@ function App() {
 
 export default App;
 `,
-            language: 'javascript',
-            modified: false
-        }
-    ],
-    activeFileId: '1',
-    openFiles: ['1'],
-
-    // Actions
-    setActiveFile: (fileId) => set({ activeFileId: fileId }),
-
-    openFile: (fileId) => set((state) => ({
-        openFiles: state.openFiles.includes(fileId)
-            ? state.openFiles
-            : [...state.openFiles, fileId],
-        activeFileId: fileId
-    })),
-
-    closeFile: (fileId) => set((state) => {
-        const newOpenFiles = state.openFiles.filter((id) => id !== fileId);
-        return {
-            openFiles: newOpenFiles,
-            activeFileId: state.activeFileId === fileId
-                ? newOpenFiles[newOpenFiles.length - 1] || null
-                : state.activeFileId
-        };
-    }),
-
-    updateFileContent: (fileId, content) => set((state) => ({
-        files: state.files.map((file) =>
-            file.id === fileId ? { ...file, content, modified: true } : file
-        )
-    })),
-
-    addFile: (name, content = '', language = 'plaintext') => {
-        const id = Date.now().toString();
-        set((state) => ({
-            files: [
-                ...state.files,
-                {
-                    id,
-                    name,
-                    path: `/${name}`,
-                    content,
-                    language,
+                    language: 'javascript',
                     modified: false
                 }
             ],
-            openFiles: [...state.openFiles, id],
-            activeFileId: id
-        }));
-        return id;
-    },
+            activeFileId: '1',
+            openFiles: ['1'],
 
-    deleteFile: (fileId) => set((state) => ({
-        files: state.files.filter((file) => file.id !== fileId),
-        openFiles: state.openFiles.filter((id) => id !== fileId),
-        activeFileId: state.activeFileId === fileId ? state.openFiles[0] || null : state.activeFileId
-    })),
+            // Actions
+            setActiveFile: (fileId) => set({ activeFileId: fileId }),
 
-    markFileSaved: (fileId) => set((state) => ({
-        files: state.files.map((file) =>
-            file.id === fileId ? { ...file, modified: false } : file
-        )
-    })),
+            openFile: (fileId) => set((state) => ({
+                openFiles: state.openFiles.includes(fileId)
+                    ? state.openFiles
+                    : [...state.openFiles, fileId],
+                activeFileId: fileId
+            })),
 
-    getActiveFile: () => {
-        const state = get();
-        return state.files.find((file) => file.id === state.activeFileId);
-    }
-}));
+            closeFile: (fileId) => set((state) => {
+                const newOpenFiles = state.openFiles.filter((id) => id !== fileId);
+                return {
+                    openFiles: newOpenFiles,
+                    activeFileId: state.activeFileId === fileId
+                        ? newOpenFiles[newOpenFiles.length - 1] || null
+                        : state.activeFileId
+                };
+            }),
 
-// GitHub Store - manages GitHub integration state
-export const useGitHubStore = create((set) => ({
-    isConnected: false,
-    user: null,
-    repositories: [],
-    selectedRepo: null,
-    isLoading: false,
-    error: null,
+            updateFileContent: (fileId, content) => set((state) => ({
+                files: state.files.map((file) =>
+                    file.id === fileId ? { ...file, content, modified: true } : file
+                )
+            })),
 
-    setConnected: (isConnected, user = null) => set({ isConnected, user }),
-    setRepositories: (repositories) => set({ repositories }),
-    selectRepo: (repo) => set({ selectedRepo: repo }),
-    setLoading: (isLoading) => set({ isLoading }),
-    setError: (error) => set({ error }),
+            addFile: (name, content = '', language = 'plaintext') => {
+                const id = Date.now().toString();
+                set((state) => ({
+                    files: [
+                        ...state.files,
+                        {
+                            id,
+                            name,
+                            path: `/${name}`,
+                            content,
+                            language,
+                            modified: false
+                        }
+                    ],
+                    openFiles: [...state.openFiles, id],
+                    activeFileId: id
+                }));
+                return id;
+            },
 
-    reset: () => set({
-        isConnected: false,
-        user: null,
-        repositories: [],
-        selectedRepo: null,
-        isLoading: false,
-        error: null
-    })
-}));
+            deleteFile: (fileId) => set((state) => ({
+                files: state.files.filter((file) => file.id !== fileId),
+                openFiles: state.openFiles.filter((id) => id !== fileId),
+                activeFileId: state.activeFileId === fileId ? state.openFiles[0] || null : state.activeFileId
+            })),
+
+            markFileSaved: (fileId) => set((state) => ({
+                files: state.files.map((file) =>
+                    file.id === fileId ? { ...file, modified: false } : file
+                )
+            })),
+
+            getActiveFile: () => {
+                const state = get();
+                return state.files.find((file) => file.id === state.activeFileId);
+            }
+        }),
+        {
+            name: 'roolts-files-storage',
+            partialize: (state) => ({
+                files: state.files,
+                activeFileId: state.activeFileId,
+                openFiles: state.openFiles
+            })
+        }
+    )
+);
+
+// GitHub Store - manages GitHub integration state (persisted)
+export const useGitHubStore = create(
+    persist(
+        (set) => ({
+            isConnected: false,
+            user: null,
+            repositories: [],
+            selectedRepo: null,
+            isLoading: false,
+            error: null,
+
+            setConnected: (isConnected, user = null) => set({ isConnected, user }),
+            setRepositories: (repositories) => set({ repositories }),
+            selectRepo: (repo) => set({ selectedRepo: repo }),
+            setLoading: (isLoading) => set({ isLoading }),
+            setError: (error) => set({ error }),
+
+            reset: () => set({
+                isConnected: false,
+                user: null,
+                repositories: [],
+                selectedRepo: null,
+                isLoading: false,
+                error: null
+            })
+        }),
+        {
+            name: 'roolts-github-storage',
+            partialize: (state) => ({
+                isConnected: state.isConnected,
+                user: state.user,
+                repositories: state.repositories
+            })
+        }
+    )
+);
 
 // Social Store - manages social media integration
 export const useSocialStore = create((set) => ({
@@ -193,17 +218,25 @@ export const useUIStore = create((set) => ({
     sidebarOpen: true,
     rightPanelOpen: true,
     rightPanelTab: 'github',
+    editorMinimized: false,
+    rightPanelExpanded: false,
     modals: {
         newFile: false,
         commitPush: false,
         share: false,
-        settings: false
+        settings: false,
+        compilerManager: false
     },
     notifications: [],
 
     toggleSidebar: () => set((state) => ({ sidebarOpen: !state.sidebarOpen })),
     toggleRightPanel: () => set((state) => ({ rightPanelOpen: !state.rightPanelOpen })),
     setRightPanelTab: (tab) => set({ rightPanelTab: tab }),
+    toggleEditorMinimized: () => set((state) => ({ editorMinimized: !state.editorMinimized })),
+    toggleRightPanelExpanded: () => set((state) => ({
+        rightPanelExpanded: !state.rightPanelExpanded,
+        editorMinimized: !state.rightPanelExpanded
+    })),
 
     openModal: (modalName) => set((state) => ({
         modals: { ...state.modals, [modalName]: true }
@@ -230,3 +263,159 @@ export const useUIStore = create((set) => ({
         notifications: state.notifications.filter((n) => n.id !== id)
     }))
 }));
+
+// Notes Store - manages notes for the note editor
+export const useNotesStore = create((set, get) => ({
+    notes: [],
+    activeNoteId: null,
+    isLoading: false,
+    searchQuery: '',
+
+    setNotes: (notes) => set({ notes }),
+    setActiveNote: (noteId) => set({ activeNoteId: noteId }),
+    setLoading: (isLoading) => set({ isLoading }),
+    setSearchQuery: (searchQuery) => set({ searchQuery }),
+
+    addNote: (note) => set((state) => ({
+        notes: [note, ...state.notes],
+        activeNoteId: note.id
+    })),
+
+    updateNote: (noteId, updates) => set((state) => ({
+        notes: state.notes.map((note) =>
+            note.id === noteId ? { ...note, ...updates, updatedAt: new Date().toISOString() } : note
+        )
+    })),
+
+    deleteNote: (noteId) => set((state) => {
+        const newNotes = state.notes.filter((note) => note.id !== noteId);
+        return {
+            notes: newNotes,
+            activeNoteId: state.activeNoteId === noteId
+                ? (newNotes[0]?.id || null)
+                : state.activeNoteId
+        };
+    }),
+
+    getActiveNote: () => {
+        const state = get();
+        return state.notes.find((note) => note.id === state.activeNoteId);
+    },
+
+    getFilteredNotes: () => {
+        const state = get();
+        if (!state.searchQuery) return state.notes;
+        const query = state.searchQuery.toLowerCase();
+        return state.notes.filter(
+            note => note.title.toLowerCase().includes(query) ||
+                note.content.toLowerCase().includes(query)
+        );
+    }
+}));
+
+// Execution Store - manages code execution state
+export const useExecutionStore = create((set) => ({
+    isExecuting: false,
+    output: '',
+    error: null,
+    executionTime: null,
+    history: [],
+    compilers: {
+        python: { available: null, version: null },
+        java: { available: null, version: null },
+        javascript: { available: null, version: null }
+    },
+    showOutput: false,
+
+    setExecuting: (isExecuting) => set({ isExecuting }),
+    setOutput: (output) => set({ output, showOutput: true }),
+    setError: (error) => set({ error }),
+    setExecutionTime: (executionTime) => set({ executionTime }),
+    setShowOutput: (showOutput) => set({ showOutput }),
+
+    setCompilerStatus: (language, status) => set((state) => ({
+        compilers: {
+            ...state.compilers,
+            [language]: status
+        }
+    })),
+
+    addToHistory: (entry) => set((state) => ({
+        history: [
+            {
+                id: Date.now(),
+                timestamp: new Date().toISOString(),
+                ...entry
+            },
+            ...state.history
+        ].slice(0, 20) // Keep last 20 entries
+    })),
+
+    clearOutput: () => set({ output: '', error: null, executionTime: null }),
+
+    clearHistory: () => set({ history: [] }),
+
+    reset: () => set({
+        isExecuting: false,
+        output: '',
+        error: null,
+        executionTime: null,
+        showOutput: false
+    })
+}));
+
+// Terminal Store - manages integrated terminal state (persisted history)
+export const useTerminalStore = create(
+    persist(
+        (set, get) => ({
+            lines: [{ type: 'system', content: 'PowerShell Terminal - Type commands below' }],
+            commandHistory: [],
+            historyIndex: -1,
+            currentInput: '',
+            cwd: '',
+            isRunning: false,
+
+            addLine: (line) => set((state) => ({
+                lines: [...state.lines, line].slice(-500) // Keep last 500 lines
+            })),
+
+            addCommand: (command) => set((state) => ({
+                commandHistory: [command, ...state.commandHistory].slice(0, 100)
+            })),
+
+            setHistoryIndex: (index) => set({ historyIndex: index }),
+            setCurrentInput: (input) => set({ currentInput: input }),
+            setCwd: (cwd) => set({ cwd }),
+            setRunning: (isRunning) => set({ isRunning }),
+
+            clearTerminal: () => set({
+                lines: [{ type: 'system', content: 'Terminal cleared' }],
+                historyIndex: -1
+            }),
+
+            getFromHistory: (direction) => {
+                const state = get();
+                const { commandHistory, historyIndex } = state;
+
+                if (commandHistory.length === 0) return state.currentInput;
+
+                let newIndex = historyIndex;
+                if (direction === 'up') {
+                    newIndex = Math.min(historyIndex + 1, commandHistory.length - 1);
+                } else {
+                    newIndex = Math.max(historyIndex - 1, -1);
+                }
+
+                set({ historyIndex: newIndex });
+                return newIndex >= 0 ? commandHistory[newIndex] : '';
+            }
+        }),
+        {
+            name: 'roolts-terminal-storage',
+            partialize: (state) => ({
+                commandHistory: state.commandHistory.slice(0, 50),
+                cwd: state.cwd
+            })
+        }
+    )
+);

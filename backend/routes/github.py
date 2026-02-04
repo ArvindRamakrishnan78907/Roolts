@@ -92,6 +92,7 @@ def github_callback():
     
     return jsonify({
         'message': 'GitHub authentication successful',
+        'access_token': access_token,
         'user': {
             'id': user_id,
             'login': user.get('login'),

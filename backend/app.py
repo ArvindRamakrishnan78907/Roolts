@@ -21,6 +21,7 @@ from routes.social import social_bp
 from routes.ai import ai_bp
 from routes.auth import auth_bp
 from routes.ai_hub import ai_hub_bp
+from routes.terminal import terminal_bp
 
 
 def create_app():
@@ -49,6 +50,7 @@ def create_app():
     app.register_blueprint(github_bp, url_prefix='/api/github')  # GitHub integration
     app.register_blueprint(social_bp, url_prefix='/api/social')  # Social posting
     app.register_blueprint(ai_bp, url_prefix='/api/ai')          # AI learning features
+    app.register_blueprint(terminal_bp, url_prefix='/api/terminal')  # Terminal
     
     # Health check endpoint
     @app.route('/api/health')

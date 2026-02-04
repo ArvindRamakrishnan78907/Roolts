@@ -1,14 +1,14 @@
 /**
  * Code Executor Service
- * Executes code via the Java executor service
+ * Executes code via the Node.js executor service
+ * All requests go through the Vite proxy at /api/executor
  */
 
 import axios from 'axios';
 
-const EXECUTOR_URL = 'http://localhost:8080/api/execute';
-
+// Use relative path - Vite will proxy to the executor service
 const executorApi = axios.create({
-    baseURL: EXECUTOR_URL,
+    baseURL: '/api/executor',
     timeout: 60000, // 60 seconds for code execution
     headers: {
         'Content-Type': 'application/json'
@@ -36,7 +36,7 @@ export const executorService = {
     getLanguages: async () => {
         try {
             const response = await executorApi.get('/languages');
-            return response.data.languages;
+            return response.data;
         } catch (error) {
             console.error('Failed to get languages:', error);
             return [];
@@ -49,7 +49,7 @@ export const executorService = {
      * Execute Python code
      */
     executePython: async (code) => {
-        const response = await executorApi.post('/python', { code });
+        const response = await executorApi.post('/execute', { code, language: 'python' });
         return response.data;
     },
 
@@ -57,7 +57,7 @@ export const executorService = {
      * Execute Java code
      */
     executeJava: async (code, className = 'Main') => {
-        const response = await executorApi.post('/java', { code, className });
+        const response = await executorApi.post('/execute', { code, language: 'java' });
         return response.data;
     },
 
@@ -65,16 +65,24 @@ export const executorService = {
      * Execute JavaScript code (Node.js)
      */
     executeJavaScript: async (code) => {
-        const response = await executorApi.post('/javascript', { code });
+        const response = await executorApi.post('/execute', { code, language: 'javascript' });
         return response.data;
     },
 
     /**
-     * Execute code with auto-detected language
+     * Execute code with specified language
      */
     execute: async (code, language) => {
-        const response = await executorApi.post('/run', { code, language });
-        return response.data;
+        try {
+            const response = await executorApi.post('/execute', { code, language });
+            return response.data;
+        } catch (error) {
+            return {
+                success: false,
+                error: error.response?.data?.error || error.message,
+                output: ''
+            };
+        }
     },
 
     // ============ Helpers ============

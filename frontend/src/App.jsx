@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import Editor from '@monaco-editor/react';
 import {
     FiFile,
@@ -24,15 +24,40 @@ import {
     FiImage,
     FiSend,
     FiTrash2,
-    FiEdit3
+    FiEdit3,
+    FiPlay,
+    FiTerminal,
+    FiStar,
+    FiCopy,
+    FiExternalLink,
+    FiSearch,
+    FiFileText,
+    FiDownload,
+    FiTrendingUp,
+    FiGitMerge,
+    FiUsers,
+    FiEye,
+    FiClock,
+    FiHash,
+    FiRefreshCw,
+    FiChevronDown,
+    FiChevronUp,
+    FiBookmark
 } from 'react-icons/fi';
 import {
     useFileStore,
     useGitHubStore,
     useSocialStore,
     useLearningStore,
-    useUIStore
+    useUIStore,
+    useNotesStore,
+    useExecutionStore,
+    useTerminalStore
 } from './store';
+import { githubService } from './services/githubService';
+import { notesService } from './services/notesService';
+import { executorService } from './services/executorService';
+import { terminalService } from './services/terminalService';
 
 // File Explorer Component
 function FileExplorer() {
@@ -83,9 +108,135 @@ function FileExplorer() {
     );
 }
 
+// Terminal Panel Component - Integrated PowerShell
+function TerminalPanel() {
+    const { lines, commandHistory, cwd, isRunning, addLine, addCommand, setCwd, setRunning, clearTerminal, getFromHistory } = useTerminalStore();
+    const [input, setInput] = useState('');
+    const terminalRef = React.useRef(null);
+    const inputRef = React.useRef(null);
+
+    // Initialize cwd on mount
+    useEffect(() => {
+        const initCwd = async () => {
+            const currentCwd = await terminalService.getCwd();
+            if (currentCwd) setCwd(currentCwd);
+        };
+        initCwd();
+    }, []);
+
+    // Auto-scroll to bottom
+    useEffect(() => {
+        if (terminalRef.current) {
+            terminalRef.current.scrollTop = terminalRef.current.scrollHeight;
+        }
+    }, [lines]);
+
+    const handleSubmit = async (e) => {
+        e.preventDefault();
+        const command = input.trim();
+        if (!command) return;
+
+        // Add command to history and display
+        addCommand(command);
+        addLine({ type: 'command', content: command, cwd });
+        setInput('');
+        setRunning(true);
+
+        // Handle clear command locally
+        if (command.toLowerCase() === 'clear' || command.toLowerCase() === 'cls') {
+            clearTerminal();
+            setRunning(false);
+            return;
+        }
+
+        try {
+            const result = await terminalService.execute(command);
+
+            if (result.output) {
+                addLine({ type: 'output', content: result.output });
+            }
+            if (result.error) {
+                addLine({ type: 'error', content: result.error });
+            }
+            if (result.cwd) {
+                setCwd(result.cwd);
+            }
+        } catch (error) {
+            addLine({ type: 'error', content: `Error: ${error.message}` });
+        }
+
+        setRunning(false);
+    };
+
+    const handleKeyDown = (e) => {
+        if (e.key === 'ArrowUp') {
+            e.preventDefault();
+            const cmd = getFromHistory('up');
+            setInput(cmd);
+        } else if (e.key === 'ArrowDown') {
+            e.preventDefault();
+            const cmd = getFromHistory('down');
+            setInput(cmd);
+        }
+    };
+
+    const getShortCwd = (fullCwd) => {
+        if (!fullCwd) return 'PS>';
+        const parts = fullCwd.split('\\');
+        return parts.length > 2 ? `...\\${parts.slice(-2).join('\\')}` : fullCwd;
+    };
+
+    return (
+        <div className="terminal-panel">
+            <div className="terminal-header">
+                <FiTerminal size={14} />
+                <span>PowerShell</span>
+                <button
+                    className="btn btn--ghost btn--icon"
+                    onClick={clearTerminal}
+                    title="Clear Terminal"
+                    style={{ marginLeft: 'auto' }}
+                >
+                    <FiTrash2 size={14} />
+                </button>
+            </div>
+            <div className="terminal-output" ref={terminalRef} onClick={() => inputRef.current?.focus()}>
+                {lines.map((line, index) => (
+                    <div key={index} className={`terminal-line terminal-line--${line.type}`}>
+                        {line.type === 'command' && (
+                            <span className="terminal-prompt">PS {getShortCwd(line.cwd)}{'>'} </span>
+                        )}
+                        <span className="terminal-content">{line.content}</span>
+                    </div>
+                ))}
+                {isRunning && (
+                    <div className="terminal-line terminal-line--system">
+                        <span className="spinner" style={{ width: '12px', height: '12px' }} /> Running...
+                    </div>
+                )}
+            </div>
+            <form className="terminal-input-form" onSubmit={handleSubmit}>
+                <span className="terminal-prompt">PS {getShortCwd(cwd)}{'>'}</span>
+                <input
+                    ref={inputRef}
+                    type="text"
+                    className="terminal-input"
+                    value={input}
+                    onChange={(e) => setInput(e.target.value)}
+                    onKeyDown={handleKeyDown}
+                    placeholder="Type command..."
+                    disabled={isRunning}
+                    autoFocus
+                />
+            </form>
+        </div>
+    );
+}
+
 // Editor Tabs Component
 function EditorTabs() {
     const { files, openFiles, activeFileId, setActiveFile, closeFile } = useFileStore();
+    const { showOutput, setShowOutput } = useExecutionStore();
 
     const openFilesData = openFiles.map((id) => files.find((f) => f.id === id)).filter(Boolean);
 
@@ -94,8 +245,8 @@ function EditorTabs() {
             {openFilesData.map((file) => (
                 <button
                     key={file.id}
-                    className={`editor-tab ${activeFileId === file.id ? 'editor-tab--active' : ''}`}
-                    onClick={() => setActiveFile(file.id)}
+                    className={`editor-tab ${activeFileId === file.id && !showOutput ? 'editor-tab--active' : ''}`}
+                    onClick={() => { setActiveFile(file.id); setShowOutput(false); }}
                 >
                     <span>{file.name}</span>
                     {file.modified && <FiCircle size={8} style={{ color: 'var(--warning)' }} />}
@@ -110,6 +261,89 @@ function EditorTabs() {
                     </span>
                 </button>
             ))}
+            <button
+                className={`editor-tab ${showOutput ? 'editor-tab--active' : ''}`}
+                onClick={() => setShowOutput(true)}
+                style={{ borderLeft: '1px solid var(--border-primary)' }}
+            >
+                <FiTerminal size={14} />
+                <span>Output</span>
+            </button>
+        </div>
+    );
+}
+
+// Code Execution Output Panel
+function OutputPanel() {
+    const { output, error, executionTime, isExecuting, clearOutput, history } = useExecutionStore();
+    const [showHistory, setShowHistory] = useState(false);
+
+    return (
+        <div className="output-panel">
+            <div className="output-panel__header">
+                <span className="output-panel__title">
+                    <FiTerminal /> Output
+                    {executionTime && (
+                        <span className="output-panel__time">
+                            <FiClock size={12} /> {executionTime}ms
+                        </span>
+                    )}
+                </span>
+                <div className="output-panel__actions">
+                    <button
+                        className="btn btn--ghost btn--icon"
+                        onClick={() => setShowHistory(!showHistory)}
+                        title="History"
+                    >
+                        <FiClock />
+                    </button>
+                    <button
+                        className="btn btn--ghost btn--icon"
+                        onClick={clearOutput}
+                        title="Clear"
+                    >
+                        <FiTrash2 />
+                    </button>
+                </div>
+            </div>
+
+            {showHistory ? (
+                <div className="output-panel__history">
+                    <h4 style={{ marginBottom: '12px', fontSize: '13px' }}>Execution History</h4>
+                    {history.length === 0 ? (
+                        <p style={{ color: 'var(--text-muted)', fontSize: '13px' }}>No execution history yet</p>
+                    ) : (
+                        history.map((entry) => (
+                            <div key={entry.id} className="history-item">
+                                <div className="history-item__header">
+                                    <span className={`history-item__status ${entry.success ? 'success' : 'error'}`}>
+                                        {entry.success ? <FiCheckCircle /> : <FiAlertCircle />}
+                                    </span>
+                                    <span className="history-item__lang">{entry.language}</span>
+                                    <span className="history-item__time">{new Date(entry.timestamp).toLocaleTimeString()}</span>
+                                </div>
+                            </div>
+                        ))
+                    )}
+                </div>
+            ) : (
+                <div className="output-panel__content">
+                    {isExecuting ? (
+                        <div className="output-panel__loading">
+                            <span className="spinner" /> Running code...
+                        </div>
+                    ) : error ? (
+                        <pre className="output-panel__error">{error}</pre>
+                    ) : output ? (
+                        <pre className="output-panel__result">{output}</pre>
+                    ) : (
+                        <div className="output-panel__empty">
+                            <FiTerminal size={32} style={{ opacity: 0.3, marginBottom: '8px' }} />
+                            <p>Click "Run" to execute your code</p>
+                        </div>
+                    )}
+                </div>
+            )}
         </div>
     );
 }
@@ -117,7 +351,12 @@ function EditorTabs() {
 // Monaco Editor Component
 function CodeEditor() {
     const { files, activeFileId, updateFileContent } = useFileStore();
+    const { showOutput } = useExecutionStore();
     const activeFile = files.find((f) => f.id === activeFileId);
+
+    if (showOutput) {
+        return <OutputPanel />;
+    }
 
     if (!activeFile) {
         return (
@@ -179,11 +418,178 @@ function CodeEditor() {
     );
 }
 
-// GitHub Panel Component
+// Enhanced GitHub Panel Component
 function GitHubPanel() {
-    const { isConnected, user, repositories, selectedRepo, isLoading } = useGitHubStore();
+    const { isConnected, user, repositories, selectedRepo, isLoading, setConnected, setRepositories, selectRepo, setLoading } = useGitHubStore();
     const { files } = useFileStore();
+    const { addNotification, openModal } = useUIStore();
     const [commitMessage, setCommitMessage] = useState('');
+    const [activeGitHubTab, setActiveGitHubTab] = useState('repos');
+    const [newRepoName, setNewRepoName] = useState('');
+    const [newRepoDesc, setNewRepoDesc] = useState('');
+    const [isPrivate, setIsPrivate] = useState(false);
+    const [trendingRepos, setTrendingRepos] = useState([]);
+    const [repoInsights, setRepoInsights] = useState(null);
+    const [showCreateModal, setShowCreateModal] = useState(false);
+    const [forkUrl, setForkUrl] = useState('');
+
+    const handleConnect = async () => {
+        try {
+            const { auth_url } = await githubService.initiateAuth();
+            const popup = window.open(auth_url, '_blank', 'width=600,height=700');
+
+            // Listen for message from popup
+            const handleMessage = async (event) => {
+                if (event.data.type === 'github-auth-success') {
+                    window.removeEventListener('message', handleMessage);
+
+                    if (event.data.code) {
+                        try {
+                            const response = await githubService.completeAuth(event.data.code);
+                            if (response.access_token) {
+                                githubService.setToken(response.access_token);
+                                setConnected(true, response.user);
+                                const repos = await githubService.listRepositories();
+                                setRepositories(repos);
+                                addNotification({ type: 'success', message: `Connected to GitHub as ${response.user?.login}!` });
+                            }
+                        } catch (error) {
+                            addNotification({ type: 'error', message: 'GitHub authentication failed' });
+                        }
+                    }
+                }
+            };
+
+            window.addEventListener('message', handleMessage);
+
+            // Fallback: poll for popup closure
+            const checkPopup = setInterval(() => {
+                if (popup && popup.closed) {
+                    clearInterval(checkPopup);
+                    window.removeEventListener('message', handleMessage);
+                }
+            }, 500);
+        } catch (error) {
+            addNotification({ type: 'error', message: 'Failed to initiate GitHub auth' });
+        }
+    };
+
+    // Check for existing token on mount
+    useEffect(() => {
+        const loadExistingAuth = async () => {
+            if (githubService.isAuthenticated() && !isConnected) {
+                try {
+                    const user = await githubService.getCurrentUser();
+                    setConnected(true, user);
+                    const repos = await githubService.listRepositories();
+                    setRepositories(repos);
+                } catch (error) {
+                    githubService.clearToken();
+                }
+            }
+        };
+        loadExistingAuth();
+    }, [isConnected]);
+
+
+    const handleCreateRepo = async () => {
+        if (!newRepoName.trim()) return;
+
+        setLoading(true);
+        try {
+            const repo = await githubService.createRepository(newRepoName, {
+                description: newRepoDesc,
+                private: isPrivate
+            });
+            setRepositories([repo, ...repositories]);
+            addNotification({ type: 'success', message: `Repository "${repo.name}" created!` });
+            setNewRepoName('');
+            setNewRepoDesc('');
+            setShowCreateModal(false);
+        } catch (error) {
+            addNotification({ type: 'error', message: 'Failed to create repository' });
+        }
+        setLoading(false);
+    };
+
+    const handleFork = async () => {
+        if (!forkUrl.trim()) return;
+
+        const match = forkUrl.match(/github\.com\/([^/]+)\/([^/]+)/);
+        if (!match) {
+            addNotification({ type: 'error', message: 'Invalid GitHub URL' });
+            return;
+        }
+
+        setLoading(true);
+        try {
+            const [, owner, repo] = match;
+            const forked = await githubService.forkRepository(owner, repo.replace('.git', ''));
+            setRepositories([forked, ...repositories]);
+            addNotification({ type: 'success', message: `Forked "${forked.full_name}"!` });
+            setForkUrl('');
+        } catch (error) {
+            addNotification({ type: 'error', message: 'Failed to fork repository' });
+        }
+        setLoading(false);
+    };
+
+    const loadTrending = async () => {
+        try {
+            const repos = await githubService.getTrending('', 'daily');
+            setTrendingRepos(repos || []);
+        } catch (error) {
+            console.error('Failed to load trending:', error);
+        }
+    };
+
+    const loadRepoInsights = async (owner, repo) => {
+        try {
+            const insights = await githubService.getRepoSummary(owner, repo);
+            setRepoInsights(insights);
+        } catch (error) {
+            console.error('Failed to load insights:', error);
+        }
+    };
+
+    const handlePush = async () => {
+        if (!selectedRepo || !commitMessage.trim()) {
+            addNotification({ type: 'error', message: 'Select a repo and enter commit message' });
+            return;
+        }
+
+        setLoading(true);
+        try {
+            const filesToPush = files.map(f => ({ path: f.name, content: f.content }));
+            const [owner, repo] = selectedRepo.full_name.split('/');
+            await githubService.pushFiles(owner, repo, filesToPush, commitMessage);
+            addNotification({ type: 'success', message: 'Code pushed to GitHub!' });
+            setCommitMessage('');
+        } catch (error) {
+            addNotification({ type: 'error', message: 'Failed to push to GitHub' });
+        }
+        setLoading(false);
+    };
+
+    const handleStarRepo = async (owner, repo) => {
+        try {
+            await githubService.starRepo(owner, repo);
+            addNotification({ type: 'success', message: 'Repository starred!' });
+        } catch (error) {
+            addNotification({ type: 'error', message: 'Failed to star repository' });
+        }
+    };
+
+    const copyCloneUrl = (url) => {
+        navigator.clipboard.writeText(url);
+        addNotification({ type: 'success', message: 'Clone URL copied!' });
+    };
+
+    useEffect(() => {
+        if (activeGitHubTab === 'trending') {
+            loadTrending();
+        }
+    }, [activeGitHubTab]);
 
     if (!isConnected) {
         return (
@@ -193,9 +599,9 @@ function GitHubPanel() {
                         <FiGithub size={48} style={{ marginBottom: '16px', opacity: 0.5 }} />
                         <h3 style={{ marginBottom: '8px' }}>Connect to GitHub</h3>
                         <p style={{ fontSize: '13px', color: 'var(--text-secondary)', marginBottom: '16px' }}>
-                            Push your code to existing or new repositories
+                            Push your code, fork repos, and discover trending projects
                         </p>
-                        <button className="social-btn social-btn--github">
+                        <button className="social-btn social-btn--github" onClick={handleConnect}>
                             <FiGithub size={20} />
                             <span>Connect GitHub Account</span>
                         </button>
@@ -205,58 +611,290 @@ function GitHubPanel() {
         );
     }
 
+    const gitHubTabs = [
+        { id: 'repos', label: 'Repos', icon: <FiFolder /> },
+        { id: 'create', label: 'Create', icon: <FiPlus /> },
+        { id: 'trending', label: 'Trending', icon: <FiTrendingUp /> }
+    ];
+
     return (
         <div className="panel-content">
-            <div className="card" style={{ marginBottom: '16px' }}>
-                <div className="card__header">
-                    <span className="card__title">
-                        <FiCheckCircle style={{ color: 'var(--success)', marginRight: '8px' }} />
-                        Connected
-                    </span>
-                </div>
-                <div className="card__body">
-                    <p style={{ fontSize: '13px' }}>Signed in as <strong>{user?.login || 'user'}</strong></p>
+            {/* User Info */}
+            <div className="card" style={{ marginBottom: '12px' }}>
+                <div className="card__body" style={{ padding: '12px', display: 'flex', alignItems: 'center', gap: '12px' }}>
+                    <FiCheckCircle style={{ color: 'var(--success)' }} />
+                    <span style={{ fontSize: '13px' }}>Signed in as <strong>{user?.login || 'user'}</strong></span>
                 </div>
             </div>
 
-            <div className="card" style={{ marginBottom: '16px' }}>
-                <div className="card__header">
-                    <span className="card__title">Repository</span>
-                </div>
-                <div className="card__body">
-                    <select className="input" style={{ marginBottom: '12px' }}>
-                        <option value="">Select repository...</option>
-                        <option value="new">+ Create New Repository</option>
-                        {repositories.map((repo) => (
-                            <option key={repo.id} value={repo.id}>{repo.name}</option>
-                        ))}
-                    </select>
-                </div>
+            {/* GitHub Sub-tabs */}
+            <div className="github-tabs" style={{ display: 'flex', borderBottom: '1px solid var(--border-primary)', marginBottom: '12px' }}>
+                {gitHubTabs.map((tab) => (
+                    <button
+                        key={tab.id}
+                        className={`github-tab ${activeGitHubTab === tab.id ? 'github-tab--active' : ''}`}
+                        onClick={() => setActiveGitHubTab(tab.id)}
+                        style={{
+                            flex: 1,
+                            padding: '8px',
+                            background: activeGitHubTab === tab.id ? 'var(--bg-tertiary)' : 'transparent',
+                            border: 'none',
+                            color: activeGitHubTab === tab.id ? 'var(--text-primary)' : 'var(--text-secondary)',
+                            cursor: 'pointer',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            gap: '6px',
+                            fontSize: '12px'
+                        }}
+                    >
+                        {tab.icon}
+                        {tab.label}
+                    </button>
+                ))}
             </div>
 
-            <div className="card">
-                <div className="card__header">
-                    <span className="card__title">
-                        <FiGitBranch style={{ marginRight: '8px' }} />
-                        Commit & Push
-                    </span>
-                </div>
-                <div className="card__body">
-                    <label className="label">Commit Message</label>
-                    <textarea
-                        className="input input--textarea"
-                        placeholder="Describe your changes..."
-                        value={commitMessage}
-                        onChange={(e) => setCommitMessage(e.target.value)}
-                        style={{ marginBottom: '12px' }}
-                    />
-                    <div style={{ display: 'flex', gap: '8px' }}>
-                        <button className="btn btn--primary" style={{ flex: 1 }}>
-                            <FiUploadCloud /> Push to GitHub
+            {/* Repos Tab */}
+            {activeGitHubTab === 'repos' && (
+                <>
+                    <div className="card" style={{ marginBottom: '12px' }}>
+                        <div className="card__header">
+                            <span className="card__title">Select Repository</span>
+                        </div>
+                        <div className="card__body">
+                            <select
+                                className="input"
+                                value={selectedRepo?.id || ''}
+                                onChange={(e) => {
+                                    const repo = repositories.find(r => r.id === parseInt(e.target.value));
+                                    selectRepo(repo);
+                                    if (repo) {
+                                        const [owner, repoName] = repo.full_name.split('/');
+                                        loadRepoInsights(owner, repoName);
+                                    }
+                                }}
+                            >
+                                <option value="">Select repository...</option>
+                                {repositories.map((repo) => (
+                                    <option key={repo.id} value={repo.id}>{repo.full_name}</option>
+                                ))}
+                            </select>
+                        </div>
+                    </div>
+
+                    {/* Quick Actions */}
+                    {selectedRepo && (
+                        <div className="card" style={{ marginBottom: '12px' }}>
+                            <div className="card__header">
+                                <span className="card__title">Quick Actions</span>
+                            </div>
+                            <div className="card__body">
+                                <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+                                    <button
+                                        className="btn btn--ghost btn--sm"
+                                        onClick={() => handleStarRepo(...selectedRepo.full_name.split('/'))}
+                                    >
+                                        <FiStar /> Star
+                                    </button>
+                                    <button
+                                        className="btn btn--ghost btn--sm"
+                                        onClick={() => copyCloneUrl(selectedRepo.clone_url)}
+                                    >
+                                        <FiCopy /> Copy URL
+                                    </button>
+                                    <button
+                                        className="btn btn--ghost btn--sm"
+                                        onClick={() => window.open(selectedRepo.html_url, '_blank')}
+                                    >
+                                        <FiExternalLink /> Open
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    )}
+
+                    {/* Repo Insights */}
+                    {repoInsights && selectedRepo && (
+                        <div className="card" style={{ marginBottom: '12px' }}>
+                            <div className="card__header">
+                                <span className="card__title"><FiTrendingUp style={{ marginRight: '8px' }} />Insights</span>
+                            </div>
+                            <div className="card__body">
+                                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '8px', fontSize: '12px' }}>
+                                    <div><FiStar /> {repoInsights.stats.stars} stars</div>
+                                    <div><FiGitMerge /> {repoInsights.stats.forks} forks</div>
+                                    <div><FiEye /> {repoInsights.stats.watchers} watchers</div>
+                                    <div><FiAlertCircle /> {repoInsights.stats.issues} issues</div>
+                                </div>
+                                {repoInsights.languages && (
+                                    <div style={{ marginTop: '12px' }}>
+                                        <div style={{ fontSize: '11px', color: 'var(--text-muted)', marginBottom: '4px' }}>Languages</div>
+                                        <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+                                            {Object.keys(repoInsights.languages).slice(0, 4).map(lang => (
+                                                <span key={lang} className="badge">{lang}</span>
+                                            ))}
+                                        </div>
+                                    </div>
+                                )}
+                            </div>
+                        </div>
+                    )}
+
+                    {/* Commit & Push */}
+                    <div className="card">
+                        <div className="card__header">
+                            <span className="card__title">
+                                <FiGitBranch style={{ marginRight: '8px' }} />
+                                Commit & Push
+                            </span>
+                        </div>
+                        <div className="card__body">
+                            <label className="label">Commit Message</label>
+                            <textarea
+                                className="input input--textarea"
+                                placeholder="Describe your changes..."
+                                value={commitMessage}
+                                onChange={(e) => setCommitMessage(e.target.value)}
+                                style={{ marginBottom: '12px' }}
+                            />
+                            <button
+                                className="btn btn--primary"
+                                style={{ width: '100%' }}
+                                onClick={handlePush}
+                                disabled={isLoading || !selectedRepo}
+                            >
+                                {isLoading ? <><span className="spinner" /> Pushing...</> : <><FiUploadCloud /> Push to GitHub</>}
+                            </button>
+                        </div>
+                    </div>
+                </>
+            )}
+
+            {/* Create Tab */}
+            {activeGitHubTab === 'create' && (
+                <>
+                    <div className="card" style={{ marginBottom: '12px' }}>
+                        <div className="card__header">
+                            <span className="card__title"><FiPlus style={{ marginRight: '8px' }} />New Repository</span>
+                        </div>
+                        <div className="card__body">
+                            <label className="label">Repository Name</label>
+                            <input
+                                type="text"
+                                className="input"
+                                placeholder="my-awesome-project"
+                                value={newRepoName}
+                                onChange={(e) => setNewRepoName(e.target.value)}
+                                style={{ marginBottom: '12px' }}
+                            />
+                            <label className="label">Description (optional)</label>
+                            <input
+                                type="text"
+                                className="input"
+                                placeholder="A short description..."
+                                value={newRepoDesc}
+                                onChange={(e) => setNewRepoDesc(e.target.value)}
+                                style={{ marginBottom: '12px' }}
+                            />
+                            <label style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '12px', cursor: 'pointer' }}>
+                                <input
+                                    type="checkbox"
+                                    checked={isPrivate}
+                                    onChange={(e) => setIsPrivate(e.target.checked)}
+                                />
+                                <span style={{ fontSize: '13px' }}>Private repository</span>
+                            </label>
+                            <button
+                                className="btn btn--primary"
+                                style={{ width: '100%' }}
+                                onClick={handleCreateRepo}
+                                disabled={isLoading || !newRepoName.trim()}
+                            >
+                                {isLoading ? <><span className="spinner" /> Creating...</> : <><FiPlus /> Create Repository</>}
+                            </button>
+                        </div>
+                    </div>
+
+                    <div className="card">
+                        <div className="card__header">
+                            <span className="card__title"><FiGitMerge style={{ marginRight: '8px' }} />Fork Repository</span>
+                        </div>
+                        <div className="card__body">
+                            <label className="label">GitHub Repository URL</label>
+                            <input
+                                type="text"
+                                className="input"
+                                placeholder="https://github.com/owner/repo"
+                                value={forkUrl}
+                                onChange={(e) => setForkUrl(e.target.value)}
+                                style={{ marginBottom: '12px' }}
+                            />
+                            <button
+                                className="btn btn--secondary"
+                                style={{ width: '100%' }}
+                                onClick={handleFork}
+                                disabled={isLoading || !forkUrl.trim()}
+                            >
+                                {isLoading ? <><span className="spinner" /> Forking...</> : <><FiGitMerge /> Fork Repository</>}
+                            </button>
+                        </div>
+                    </div>
+                </>
+            )}
+
+            {/* Trending Tab */}
+            {activeGitHubTab === 'trending' && (
+                <div className="card">
+                    <div className="card__header">
+                        <span className="card__title"><FiTrendingUp style={{ marginRight: '8px' }} />Trending Today</span>
+                        <button className="btn btn--ghost btn--icon" onClick={loadTrending}>
+                            <FiRefreshCw size={14} />
                         </button>
                     </div>
+                    <div className="card__body" style={{ maxHeight: '400px', overflow: 'auto' }}>
+                        {trendingRepos.length === 0 ? (
+                            <p style={{ color: 'var(--text-muted)', fontSize: '13px', textAlign: 'center' }}>
+                                Loading trending repos...
+                            </p>
+                        ) : (
+                            trendingRepos.map((repo) => (
+                                <div key={repo.id} className="trending-item" style={{
+                                    padding: '12px 0',
+                                    borderBottom: '1px solid var(--border-primary)'
+                                }}>
+                                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'start' }}>
+                                        <div>
+                                            <a
+                                                href={repo.html_url}
+                                                target="_blank"
+                                                rel="noopener noreferrer"
+                                                style={{ color: 'var(--info)', fontSize: '13px', fontWeight: '500' }}
+                                            >
+                                                {repo.full_name}
+                                            </a>
+                                            <p style={{ fontSize: '12px', color: 'var(--text-secondary)', marginTop: '4px' }}>
+                                                {repo.description?.slice(0, 80) || 'No description'}...
+                                            </p>
+                                            <div style={{ display: 'flex', gap: '12px', marginTop: '8px', fontSize: '11px', color: 'var(--text-muted)' }}>
+                                                <span><FiStar size={10} /> {repo.stargazers_count}</span>
+                                                <span><FiGitMerge size={10} /> {repo.forks_count}</span>
+                                                {repo.language && <span>{repo.language}</span>}
+                                            </div>
+                                        </div>
+                                        <button
+                                            className="btn btn--ghost btn--icon"
+                                            onClick={() => handleStarRepo(repo.owner.login, repo.name)}
+                                            title="Star"
+                                        >
+                                            <FiStar />
+                                        </button>
+                                    </div>
+                                </div>
+                            ))
+                        )}
+                    </div>
                 </div>
-            </div>
+            )}
         </div>
     );
 }
@@ -341,6 +979,163 @@ function SocialPanel() {
     );
 }
 
+// Note Editor Panel Component
+function NoteEditorPanel() {
+    const { notes, activeNoteId, setNotes, setActiveNote, addNote, updateNote, deleteNote } = useNotesStore();
+    const [searchQuery, setSearchQuery] = useState('');
+    const [isEditing, setIsEditing] = useState(false);
+
+    // Load notes on mount
+    useEffect(() => {
+        const loadedNotes = notesService.getAllNotes();
+        setNotes(loadedNotes);
+        if (loadedNotes.length > 0 && !activeNoteId) {
+            setActiveNote(loadedNotes[0].id);
+        }
+    }, []);
+
+    const handleCreateNote = () => {
+        const newNote = notesService.createNote('New Note', '');
+        addNote(newNote);
+    };
+
+    const handleUpdateNote = (field, value) => {
+        if (!activeNoteId) return;
+        notesService.updateNote(activeNoteId, { [field]: value });
+        updateNote(activeNoteId, { [field]: value });
+    };
+
+    const handleDeleteNote = (noteId) => {
+        notesService.deleteNote(noteId);
+        deleteNote(noteId);
+    };
+
+    const handleExport = (noteId) => {
+        notesService.exportNote(noteId);
+    };
+
+    const handleTogglePin = (noteId) => {
+        const updatedNote = notesService.togglePin(noteId);
+        if (updatedNote) {
+            setNotes(notesService.getAllNotes());
+        }
+    };
+
+    const activeNote = notes.find(n => n.id === activeNoteId);
+
+    const filteredNotes = searchQuery
+        ? notes.filter(n =>
+            n.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
+            n.content.toLowerCase().includes(searchQuery.toLowerCase())
+        )
+        : notes;
+
+    return (
+        <div className="notes-panel">
+            {/* Notes Header */}
+            <div className="notes-panel__header">
+                <div className="notes-panel__search">
+                    <FiSearch size={14} />
+                    <input
+                        type="text"
+                        placeholder="Search notes..."
+                        value={searchQuery}
+                        onChange={(e) => setSearchQuery(e.target.value)}
+                    />
+                </div>
+                <button className="btn btn--primary btn--sm" onClick={handleCreateNote}>
+                    <FiPlus /> New
+                </button>
+            </div>
+
+            <div className="notes-panel__content">
+                {/* Notes List */}
+                <div className="notes-list">
+                    {filteredNotes.length === 0 ? (
+                        <div className="notes-list__empty">
+                            <FiFileText size={24} style={{ opacity: 0.3, marginBottom: '8px' }} />
+                            <p>No notes yet</p>
+                            <button className="btn btn--ghost btn--sm" onClick={handleCreateNote}>
+                                Create your first note
+                            </button>
+                        </div>
+                    ) : (
+                        filteredNotes.map((note) => (
+                            <div
+                                key={note.id}
+                                className={`note-item ${activeNoteId === note.id ? 'note-item--active' : ''}`}
+                                onClick={() => setActiveNote(note.id)}
+                            >
+                                <div className="note-item__header">
+                                    <span className="note-item__title">
+                                        {note.pinned && <FiPin size={10} style={{ marginRight: '4px' }} />}
+                                        {note.title || 'Untitled'}
+                                    </span>
+                                    <span className="note-item__date">
+                                        {new Date(note.updatedAt).toLocaleDateString()}
+                                    </span>
+                                </div>
+                                <p className="note-item__preview">
+                                    {note.content?.slice(0, 60) || 'Empty note...'}
+                                </p>
+                            </div>
+                        ))
+                    )}
+                </div>
+
+                {/* Note Editor */}
+                {activeNote && (
+                    <div className="note-editor">
+                        <div className="note-editor__header">
+                            <input
+                                type="text"
+                                className="note-editor__title"
+                                value={activeNote.title}
+                                onChange={(e) => handleUpdateNote('title', e.target.value)}
+                                placeholder="Note title..."
+                            />
+                            <div className="note-editor__actions">
+                                <button
+                                    className="btn btn--ghost btn--icon"
+                                    onClick={() => handleTogglePin(activeNote.id)}
+                                    title={activeNote.pinned ? 'Unpin' : 'Pin'}
+                                >
+                                    <FiPin style={{ color: activeNote.pinned ? 'var(--warning)' : undefined }} />
+                                </button>
+                                <button
+                                    className="btn btn--ghost btn--icon"
+                                    onClick={() => handleExport(activeNote.id)}
+                                    title="Export"
+                                >
+                                    <FiDownload />
+                                </button>
+                                <button
+                                    className="btn btn--ghost btn--icon"
+                                    onClick={() => handleDeleteNote(activeNote.id)}
+                                    title="Delete"
+                                >
+                                    <FiTrash2 />
+                                </button>
+                            </div>
+                        </div>
+                        <textarea
+                            className="note-editor__content"
+                            value={activeNote.content}
+                            onChange={(e) => handleUpdateNote('content', e.target.value)}
+                            placeholder="Start typing your note..."
+                        />
+                        <div className="note-editor__footer">
+                            <span className="note-editor__info">
+                                Last updated: {new Date(activeNote.updatedAt).toLocaleString()}
+                            </span>
+                        </div>
+                    </div>
+                )}
+            </div>
+        </div>
+    );
+}
+
 // Learning Panel Component
 function LearningPanel() {
     const { explanation, diagram, resources, isGenerating, activeTab, setActiveTab } = useLearningStore();
@@ -398,7 +1193,6 @@ function LearningPanel() {
                                     {explanation || (
                                         <p style={{ color: 'var(--text-muted)', fontStyle: 'italic' }}>
                                             Click "Analyze Code with AI" to get an explanation of your code.
-                                            The AI will break down the logic, explain functions, and highlight key concepts.
                                         </p>
                                     )}
                                 </div>
@@ -415,8 +1209,7 @@ function LearningPanel() {
                                         <div className="diagram-container" dangerouslySetInnerHTML={{ __html: diagram }} />
                                     ) : (
                                         <p style={{ color: 'var(--text-muted)', fontStyle: 'italic' }}>
-                                            AI will generate flow diagrams, class diagrams, or sequence diagrams
-                                            based on your code structure.
+                                            AI will generate flow diagrams, class diagrams, or sequence diagrams.
                                         </p>
                                     )}
                                 </div>
@@ -445,8 +1238,7 @@ function LearningPanel() {
                                         </ul>
                                     ) : (
                                         <p style={{ color: 'var(--text-muted)', fontStyle: 'italic' }}>
-                                            AI will suggest relevant documentation, tutorials, and articles
-                                            based on the technologies used in your code.
+                                            AI will suggest relevant documentation and tutorials.
                                         </p>
                                     )}
                                 </div>
@@ -460,8 +1252,8 @@ function LearningPanel() {
 }
 
 // Right Panel Component
-function RightPanel() {
-    const { rightPanelOpen, rightPanelTab, setRightPanelTab, toggleRightPanel } = useUIStore();
+function RightPanel({ style, editorMinimized }) {
+    const { rightPanelOpen, rightPanelTab, setRightPanelTab, toggleRightPanel, rightPanelExpanded, toggleRightPanelExpanded } = useUIStore();
 
     if (!rightPanelOpen) {
         return (
@@ -480,21 +1272,38 @@ function RightPanel() {
     const tabs = [
         { id: 'github', label: 'GitHub', icon: <FiGithub /> },
         { id: 'social', label: 'Social', icon: <FiShare2 /> },
+        { id: 'notes', label: 'Notes', icon: <FiFileText /> },
         { id: 'learn', label: 'Learn', icon: <FiBookOpen /> }
     ];
 
+    // Calculate style - when editor is minimized and panel is expanded, limit max width
+    const panelStyle = rightPanelExpanded
+        ? (editorMinimized ? { maxWidth: 'calc(100% - 60px)' } : {})
+        : style;
+
     return (
-        <div className="right-panel">
+        <div
+            className={`right-panel ${rightPanelExpanded ? 'right-panel--expanded' : ''}`}
+            style={panelStyle}
+        >
             <div className="panel-tabs">
                 {tabs.map((tab) => (
                     <button
                         key={tab.id}
                         className={`panel-tab ${rightPanelTab === tab.id ? 'panel-tab--active' : ''}`}
                         onClick={() => setRightPanelTab(tab.id)}
+                        title={tab.label}
                     >
                         {tab.icon}
                     </button>
                 ))}
+                <button
+                    className="btn btn--ghost btn--icon"
+                    onClick={toggleRightPanelExpanded}
+                    title={rightPanelExpanded ? "Collapse Panel" : "Expand Panel (minimize editor)"}
+                >
+                    {rightPanelExpanded ? <FiChevronDown /> : <FiChevronUp />}
+                </button>
                 <button className="btn btn--ghost btn--icon" onClick={toggleRightPanel}>
                     <FiChevronRight />
                 </button>
@@ -502,6 +1311,7 @@ function RightPanel() {
 
             {rightPanelTab === 'github' && <GitHubPanel />}
             {rightPanelTab === 'social' && <SocialPanel />}
+            {rightPanelTab === 'notes' && <NoteEditorPanel />}
             {rightPanelTab === 'learn' && <LearningPanel />}
         </div>
     );
@@ -573,10 +1383,155 @@ function NewFileModal() {
     );
 }
 
+// Compiler Manager Modal
+function CompilerManagerModal() {
+    const { modals, closeModal, addNotification } = useUIStore();
+    const { compilers, setCompilerStatus } = useExecutionStore();
+    const [checking, setChecking] = useState(false);
+
+    if (!modals.compilerManager) return null;
+
+    const checkCompilers = async () => {
+        setChecking(true);
+        try {
+            const health = await executorService.health();
+            if (health.available) {
+                const languages = await executorService.getLanguages();
+                languages.forEach(lang => {
+                    setCompilerStatus(lang.id, {
+                        available: lang.available,
+                        version: lang.version
+                    });
+                });
+            }
+        } catch (error) {
+            console.error('Failed to check compilers:', error);
+        }
+        setChecking(false);
+    };
+
+    useEffect(() => {
+        if (modals.compilerManager) {
+            checkCompilers();
+        }
+    }, [modals.compilerManager]);
+
+    const compilerList = [
+        {
+            id: 'python',
+            name: 'Python',
+            icon: '🐍',
+            installCmd: 'winget install Python.Python.3',
+            downloadUrl: 'https://www.python.org/downloads/'
+        },
+        {
+            id: 'java',
+            name: 'Java (JDK)',
+            icon: '☕',
+            installCmd: 'winget install Microsoft.OpenJDK.17',
+            downloadUrl: 'https://adoptium.net/'
+        },
+        {
+            id: 'javascript',
+            name: 'Node.js',
+            icon: '📜',
+            installCmd: 'winget install OpenJS.NodeJS.LTS',
+            downloadUrl: 'https://nodejs.org/'
+        }
+    ];
+
+    return (
+        <div className="modal-overlay" onClick={() => closeModal('compilerManager')}>
+            <div className="modal" onClick={(e) => e.stopPropagation()}>
+                <div className="modal__header">
+                    <h3 className="modal__title"><FiTerminal style={{ marginRight: '8px' }} />Compiler Manager</h3>
+                    <button className="btn btn--ghost btn--icon" onClick={() => closeModal('compilerManager')}>
+                        <FiX />
+                    </button>
+                </div>
+                <div className="modal__body">
+                    <p style={{ fontSize: '13px', color: 'var(--text-secondary)', marginBottom: '16px' }}>
+                        Check and install compilers/interpreters for code execution.
+                    </p>
+
+                    {compilerList.map((compiler) => {
+                        const status = compilers[compiler.id];
+                        return (
+                            <div key={compiler.id} className="compiler-item" style={{
+                                padding: '12px',
+                                border: '1px solid var(--border-primary)',
+                                borderRadius: '8px',
+                                marginBottom: '12px'
+                            }}>
+                                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                                    <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                                        <span style={{ fontSize: '24px' }}>{compiler.icon}</span>
+                                        <div>
+                                            <div style={{ fontWeight: '500' }}>{compiler.name}</div>
+                                            <div style={{ fontSize: '12px', color: 'var(--text-muted)' }}>
+                                                {status?.version || 'Not detected'}
+                                            </div>
+                                        </div>
+                                    </div>
+                                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                        {status?.available === true && (
+                                            <FiCheckCircle style={{ color: 'var(--success)' }} />
+                                        )}
+                                        {status?.available === false && (
+                                            <FiAlertCircle style={{ color: 'var(--error)' }} />
+                                        )}
+                                        {status?.available === null && (
+                                            <span style={{ color: 'var(--text-muted)', fontSize: '12px' }}>Unknown</span>
+                                        )}
+                                    </div>
+                                </div>
+
+                                {status?.available === false && (
+                                    <div style={{ marginTop: '12px', padding: '8px', background: 'var(--bg-tertiary)', borderRadius: '4px' }}>
+                                        <p style={{ fontSize: '12px', marginBottom: '8px' }}>Install using:</p>
+                                        <code style={{ fontSize: '11px', background: 'var(--bg-primary)', padding: '4px 8px', borderRadius: '4px' }}>
+                                            {compiler.installCmd}
+                                        </code>
+                                        <div style={{ marginTop: '8px' }}>
+                                            <a
+                                                href={compiler.downloadUrl}
+                                                target="_blank"
+                                                rel="noopener noreferrer"
+                                                style={{ fontSize: '12px', color: 'var(--info)' }}
+                                            >
+                                                <FiExternalLink size={12} /> Download manually
+                                            </a>
+                                        </div>
+                                    </div>
+                                )}
+                            </div>
+                        );
+                    })}
+
+                    <button
+                        className="btn btn--secondary"
+                        style={{ width: '100%' }}
+                        onClick={checkCompilers}
+                        disabled={checking}
+                    >
+                        {checking ? <><span className="spinner" /> Checking...</> : <><FiRefreshCw /> Refresh Status</>}
+                    </button>
+                </div>
+                <div className="modal__footer">
+                    <button className="btn btn--primary" onClick={() => closeModal('compilerManager')}>
+                        Done
+                    </button>
+                </div>
+            </div>
+        </div>
+    );
+}
+
 // Status Bar Component
 function StatusBar() {
     const { files, activeFileId } = useFileStore();
     const { isConnected } = useGitHubStore();
+    const { compilers } = useExecutionStore();
     const activeFile = files.find((f) => f.id === activeFileId);
 
     return (
@@ -601,7 +1556,7 @@ function StatusBar() {
                     </>
                 )}
                 <span className="status-bar__item">
-                    <FiCpu size={12} /> Kiro AI Ready
+                    <FiCpu size={12} /> Roolts Ready
                 </span>
             </div>
         </div>
@@ -638,13 +1593,157 @@ function Notifications() {
 
 // Main App Component
 function App() {
-    const { sidebarOpen, toggleSidebar, openModal } = useUIStore();
-    const { markFileSaved } = useFileStore();
-    const { addNotification } = useUIStore();
+    const { sidebarOpen, toggleSidebar, openModal, addNotification, editorMinimized, toggleEditorMinimized } = useUIStore();
+    const { files, activeFileId, markFileSaved } = useFileStore();
+    const { isExecuting, setExecuting, setOutput, setError, setExecutionTime, addToHistory } = useExecutionStore();
+    const { setConnected, setRepositories, isConnected } = useGitHubStore();
+    const [terminalOpen, setTerminalOpen] = useState(false);
+
+    // Resizable panel state
+    const [rightPanelWidth, setRightPanelWidth] = useState(360);
+    const [terminalHeight, setTerminalHeight] = useState(250);
+    const [isResizing, setIsResizing] = useState(null); // 'right' or 'terminal'
+    const mainRef = React.useRef(null);
+
+    const activeFile = files.find(f => f.id === activeFileId);
+
+    // Handle resize mouse events
+    useEffect(() => {
+        const handleMouseMove = (e) => {
+            if (!isResizing || !mainRef.current) return;
+
+            const mainRect = mainRef.current.getBoundingClientRect();
+
+            if (isResizing === 'right') {
+                const newWidth = mainRect.right - e.clientX;
+                setRightPanelWidth(Math.max(200, Math.min(800, newWidth)));
+            } else if (isResizing === 'terminal') {
+                const wrapperRect = mainRef.current.querySelector('.editor-terminal-wrapper')?.getBoundingClientRect();
+                if (wrapperRect) {
+                    const newHeight = wrapperRect.bottom - e.clientY;
+                    setTerminalHeight(Math.max(100, Math.min(500, newHeight)));
+                }
+            }
+        };
+
+        const handleMouseUp = () => {
+            setIsResizing(null);
+            document.body.style.cursor = '';
+            document.body.style.userSelect = '';
+        };
+
+        if (isResizing) {
+            document.body.style.cursor = isResizing === 'right' ? 'col-resize' : 'row-resize';
+            document.body.style.userSelect = 'none';
+            document.addEventListener('mousemove', handleMouseMove);
+            document.addEventListener('mouseup', handleMouseUp);
+        }
+
+        return () => {
+            document.removeEventListener('mousemove', handleMouseMove);
+            document.removeEventListener('mouseup', handleMouseUp);
+        };
+    }, [isResizing]);
+
+    // Handle GitHub OAuth callback
+    useEffect(() => {
+        const handleGitHubCallback = async () => {
+            const urlParams = new URLSearchParams(window.location.search);
+            const code = urlParams.get('code');
+
+            if (code && window.location.pathname.includes('callback/github')) {
+                try {
+                    // Exchange code for token
+                    const response = await githubService.completeAuth(code);
+
+                    if (response.access_token) {
+                        githubService.setToken(response.access_token);
+                        setConnected(true, response.user);
+
+                        // Load repositories
+                        const repos = await githubService.listRepositories();
+                        setRepositories(repos);
+
+                        addNotification({ type: 'success', message: `Connected to GitHub as ${response.user?.login}!` });
+                    }
+
+                    // Clean up URL
+                    window.history.replaceState({}, document.title, window.location.pathname.replace('/callback/github', '/'));
+                } catch (error) {
+                    console.error('GitHub auth failed:', error);
+                    addNotification({ type: 'error', message: 'GitHub authentication failed' });
+                }
+            }
+
+            // Check if already authenticated (token in localStorage)
+            if (!isConnected && githubService.isAuthenticated()) {
+                try {
+                    const user = await githubService.getCurrentUser();
+                    setConnected(true, user);
+                    const repos = await githubService.listRepositories();
+                    setRepositories(repos);
+                } catch (error) {
+                    // Token might be invalid, clear it
+                    githubService.clearToken();
+                }
+            }
+        };
+
+        handleGitHubCallback();
+    }, []);
+
 
     const handleSave = () => {
-        // Simulate save
         addNotification({ type: 'success', message: 'File saved successfully!' });
+        if (activeFileId) {
+            markFileSaved(activeFileId);
+        }
+    };
+
+    const handleRunCode = async () => {
+        if (!activeFile) {
+            addNotification({ type: 'error', message: 'No file selected to run' });
+            return;
+        }
+
+        setExecuting(true);
+        setOutput('');
+        setError(null);
+
+        const startTime = Date.now();
+
+        try {
+            const result = await executorService.execute(activeFile.content, activeFile.language);
+            const executionTime = Date.now() - startTime;
+            setExecutionTime(executionTime);
+
+            if (result.success) {
+                setOutput(result.output || 'Code executed successfully (no output)');
+                addToHistory({
+                    success: true,
+                    language: activeFile.language,
+                    output: result.output
+                });
+            } else {
+                setError(result.error || 'Execution failed');
+                addToHistory({
+                    success: false,
+                    language: activeFile.language,
+                    error: result.error
+                });
+            }
+        } catch (error) {
+            const executionTime = Date.now() - startTime;
+            setExecutionTime(executionTime);
+            setError(`Failed to execute: ${error.message}`);
+            addToHistory({
+                success: false,
+                language: activeFile.language,
+                error: error.message
+            });
+        }
+
+        setExecuting(false);
     };
 
     return (
@@ -656,11 +1755,26 @@ function App() {
                     <h1 className="header__title">Roolts</h1>
                 </div>
                 <div className="header__actions">
+                    <button
+                        className="btn btn--success"
+                        onClick={handleRunCode}
+                        disabled={isExecuting || !activeFile}
+                        title="Run Code"
+                    >
+                        {isExecuting ? (
+                            <><span className="spinner" /> Running...</>
+                        ) : (
+                            <><FiPlay /> Run</>
+                        )}
+                    </button>
                     <button className="btn btn--ghost btn--icon" onClick={handleSave} title="Save">
                         <FiSave />
                     </button>
                     <button className="btn btn--ghost btn--icon" onClick={() => openModal('newFile')} title="New File">
                         <FiPlus />
+                    </button>
+                    <button className="btn btn--ghost btn--icon" onClick={() => openModal('compilerManager')} title="Compiler Manager">
+                        <FiTerminal />
                     </button>
                     <button className="btn btn--ghost btn--icon" title="Settings">
                         <FiSettings />
@@ -672,7 +1786,7 @@ function App() {
             </header>
 
             {/* Main Content */}
-            <main className="main">
+            <main className={`main ${editorMinimized ? 'main--editor-minimized' : ''}`} ref={mainRef}>
                 {/* Sidebar */}
                 <aside className={`sidebar ${!sidebarOpen ? 'sidebar--collapsed' : ''}`}>
                     {sidebarOpen ? (
@@ -683,27 +1797,99 @@ function App() {
                                     <FiChevronLeft />
                                 </button>
                             </div>
-                            <FileExplorer />
+                            <div className="sidebar-content">
+                                <FileExplorer />
+                            </div>
+                            <div className="sidebar-footer">
+                                <button
+                                    className={`sidebar-terminal-btn ${terminalOpen ? 'sidebar-terminal-btn--active' : ''}`}
+                                    onClick={() => setTerminalOpen(!terminalOpen)}
+                                    title="Toggle Terminal"
+                                >
+                                    <FiTerminal size={16} />
+                                    <span>Terminal</span>
+                                    {terminalOpen && <FiChevronRight size={14} style={{ marginLeft: 'auto', transform: 'rotate(90deg)' }} />}
+                                </button>
+                            </div>
                         </>
                     ) : (
-                        <button
-                            className="btn btn--ghost btn--icon"
-                            onClick={toggleSidebar}
-                            style={{ margin: '8px' }}
-                        >
-                            <FiChevronRight />
-                        </button>
+                        <div className="sidebar-collapsed-buttons">
+                            <button
+                                className="btn btn--ghost btn--icon"
+                                onClick={toggleSidebar}
+                                title="Expand Explorer"
+                            >
+                                <FiChevronRight />
+                            </button>
+                            <button
+                                className={`btn btn--ghost btn--icon ${terminalOpen ? 'btn--active' : ''}`}
+                                onClick={() => setTerminalOpen(!terminalOpen)}
+                                title="Toggle Terminal"
+                            >
+                                <FiTerminal />
+                            </button>
+                        </div>
                     )}
                 </aside>
 
-                {/* Editor */}
-                <div className="editor-container">
-                    <EditorTabs />
-                    <CodeEditor />
+                {/* Editor and Terminal Area */}
+                <div className={`editor-terminal-wrapper ${editorMinimized ? 'editor-terminal-wrapper--minimized' : ''}`}>
+                    {/* Editor */}
+                    <div className={`editor-container ${editorMinimized ? 'editor-container--minimized' : ''} ${terminalOpen ? 'editor-container--with-terminal' : ''}`}>
+                        {editorMinimized ? (
+                            <div className="editor-minimized-bar">
+                                <button
+                                    className="editor-minimized-bar__btn"
+                                    onClick={toggleEditorMinimized}
+                                    title="Expand Editor"
+                                >
+                                    <FiCode /> Editor
+                                </button>
+                            </div>
+                        ) : (
+                            <>
+                                <EditorTabs />
+                                <CodeEditor />
+                            </>
+                        )}
+                    </div>
+
+                    {/* Terminal Bottom Panel */}
+                    {terminalOpen && (
+                        <>
+                            <div
+                                className={`resize-handle resize-handle--vertical ${isResizing === 'terminal' ? 'resize-handle--active' : ''}`}
+                                onMouseDown={() => setIsResizing('terminal')}
+                            />
+                            <div className="terminal-bottom-panel" style={{ height: terminalHeight }}>
+                                <div className="terminal-panel-header">
+                                    <div className="terminal-panel-tabs">
+                                        <button className="terminal-panel-tab terminal-panel-tab--active">
+                                            <FiTerminal size={14} /> Terminal
+                                        </button>
+                                    </div>
+                                    <button
+                                        className="btn btn--ghost btn--icon"
+                                        onClick={() => setTerminalOpen(false)}
+                                        title="Close Terminal"
+                                    >
+                                        <FiX size={14} />
+                                    </button>
+                                </div>
+                                <TerminalPanel />
+                            </div>
+                        </>
+                    )}
                 </div>
 
+                {/* Resize Handle for Right Panel */}
+                <div
+                    className={`resize-handle resize-handle--horizontal ${isResizing === 'right' ? 'resize-handle--active' : ''}`}
+                    onMouseDown={() => setIsResizing('right')}
+                />
+
                 {/* Right Panel */}
-                <RightPanel />
+                <RightPanel style={{ width: rightPanelWidth }} editorMinimized={editorMinimized} />
             </main>
 
             {/* Status Bar */}
@@ -711,6 +1897,7 @@ function App() {
 
             {/* Modals */}
             <NewFileModal />
+            <CompilerManagerModal />
 
             {/* Notifications */}
             <Notifications />
