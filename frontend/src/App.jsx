@@ -42,22 +42,25 @@ import {
     FiRefreshCw,
     FiChevronDown,
     FiChevronUp,
-    FiBookmark
+    FiBookmark,
+    FiMapPin
 } from 'react-icons/fi';
 import {
+    useUIStore,
     useFileStore,
     useGitHubStore,
+    useExecutionStore,
     useSocialStore,
     useLearningStore,
-    useUIStore,
     useNotesStore,
-    useExecutionStore,
-    useTerminalStore
+    useTerminalStore,
+    useSettingsStore
 } from './store';
 import { githubService } from './services/githubService';
 import { notesService } from './services/notesService';
 import { executorService } from './services/executorService';
 import { terminalService } from './services/terminalService';
+import WebPreview from './components/WebPreview';
 
 // File Explorer Component
 function FileExplorer() {
@@ -111,6 +114,7 @@ function FileExplorer() {
 // Terminal Panel Component - Integrated PowerShell
 function TerminalPanel() {
     const { lines, commandHistory, cwd, isRunning, addLine, addCommand, setCwd, setRunning, clearTerminal, getFromHistory } = useTerminalStore();
+    const { addNotification } = useUIStore();
     const [input, setInput] = useState('');
     const terminalRef = React.useRef(null);
     const inputRef = React.useRef(null);
@@ -142,12 +146,21 @@ function TerminalPanel() {
         setInput('');
         setRunning(true);
 
-        // Handle clear command locally
+        // Clear terminal if requested
         if (command.toLowerCase() === 'clear' || command.toLowerCase() === 'cls') {
             clearTerminal();
             setRunning(false);
             return;
         }
+
+        // Handle copy command locally
+        if (command.toLowerCase() === 'copy') {
+            copyTerminal();
+            setRunning(false);
+            return;
+        }
+
+
 
         try {
             const result = await terminalService.execute(command);
@@ -186,11 +199,34 @@ function TerminalPanel() {
         return parts.length > 2 ? `...\\${parts.slice(-2).join('\\')}` : fullCwd;
     };
 
+    const copyTerminal = () => {
+        const text = lines.map(line => {
+            if (line.type === 'command') return `PS ${line.cwd}> ${line.content}`;
+            return line.content;
+        }).join('\n');
+        navigator.clipboard.writeText(text);
+        addNotification('Terminal output copied to clipboard', 'success');
+    };
+
+    const handleTerminalClick = () => {
+        // Only focus if no text is selected
+        if (!window.getSelection().toString()) {
+            inputRef.current?.focus();
+        }
+    };
+
     return (
         <div className="terminal-panel">
             <div className="terminal-header">
                 <FiTerminal size={14} />
                 <span>PowerShell</span>
+                <button
+                    className="btn btn--ghost btn--icon"
+                    onClick={copyTerminal}
+                    title="Copy All Output"
+                >
+                    <FiCopy size={14} />
+                </button>
                 <button
                     className="btn btn--ghost btn--icon"
                     onClick={clearTerminal}
@@ -200,7 +236,7 @@ function TerminalPanel() {
                     <FiTrash2 size={14} />
                 </button>
             </div>
-            <div className="terminal-output" ref={terminalRef} onClick={() => inputRef.current?.focus()}>
+            <div className="terminal-output" ref={terminalRef} onClick={handleTerminalClick}>
                 {lines.map((line, index) => (
                     <div key={index} className={`terminal-line terminal-line--${line.type}`}>
                         {line.type === 'command' && (
@@ -275,7 +311,7 @@ function EditorTabs() {
 
 // Code Execution Output Panel
 function OutputPanel() {
-    const { output, error, executionTime, isExecuting, clearOutput, history } = useExecutionStore();
+    const { output, error, executionTime, isExecuting, clearOutput, history, setShowOutput } = useExecutionStore();
     const [showHistory, setShowHistory] = useState(false);
 
     return (
@@ -303,6 +339,13 @@ function OutputPanel() {
                         title="Clear"
                     >
                         <FiTrash2 />
+                    </button>
+                    <button
+                        className="btn btn--ghost btn--icon"
+                        onClick={() => setShowOutput(false)}
+                        title="Close Output"
+                    >
+                        <FiX />
                     </button>
                 </div>
             </div>
@@ -353,10 +396,9 @@ function CodeEditor() {
     const { files, activeFileId, updateFileContent } = useFileStore();
     const { showOutput } = useExecutionStore();
     const activeFile = files.find((f) => f.id === activeFileId);
+    // Editor options derived from settings... (implied context, but I will just return the overlay structure)
 
-    if (showOutput) {
-        return <OutputPanel />;
-    }
+    // Editor options derived from settings... (implied context, but I will just return the overlay structure)
 
     if (!activeFile) {
         return (
@@ -391,29 +433,67 @@ function CodeEditor() {
         plaintext: 'plaintext'
     };
 
+    const { theme, format, features, backgroundImage, backgroundOpacity } = useSettingsStore();
+
     return (
-        <div className="monaco-wrapper">
+        <div className="monaco-wrapper" style={{ position: 'relative' }}>
+            {backgroundImage && (
+                <div
+                    style={{
+                        position: 'absolute',
+                        top: 0,
+                        left: 0,
+                        width: '100%',
+                        height: '100%',
+                        backgroundImage: `url(${backgroundImage})`,
+                        backgroundSize: 'cover',
+                        backgroundPosition: 'center',
+                        opacity: backgroundOpacity,
+                        pointerEvents: 'none',
+                        zIndex: 10
+                    }}
+                />
+            )}
             <Editor
                 height="100%"
                 language={languageMap[activeFile.language] || 'plaintext'}
                 value={activeFile.content}
                 onChange={(value) => updateFileContent(activeFile.id, value || '')}
-                theme="vs-dark"
+                theme={theme}
                 options={{
-                    fontFamily: "'JetBrains Mono', 'Fira Code', monospace",
-                    fontSize: 14,
-                    lineHeight: 1.6,
+                    fontFamily: format.fontFamily,
+                    fontSize: format.fontSize,
+                    lineHeight: format.lineHeight,
                     padding: { top: 16, bottom: 16 },
-                    minimap: { enabled: true },
+                    minimap: { enabled: features.minimap },
+                    // Check if transparent background is needed:
+                    // We are putting overlay ON TOP (zIndex 10), so editor background doesn't matter much
+                    // except it sits behind the overlay.
                     scrollBeyondLastLine: false,
                     smoothScrolling: true,
                     cursorBlinking: 'smooth',
                     cursorSmoothCaretAnimation: 'on',
                     renderWhitespace: 'selection',
-                    wordWrap: 'on',
+                    wordWrap: format.wordWrap,
+                    lineNumbers: features.lineNumbers,
                     bracketPairColorization: { enabled: true }
                 }}
             />
+            {showOutput && (
+                <div style={{
+                    position: 'absolute',
+                    top: 0,
+                    left: 0,
+                    width: '100%',
+                    height: '100%',
+                    zIndex: 20,
+                    backgroundColor: 'var(--bg-primary)',
+                    display: 'flex',
+                    flexDirection: 'column'
+                }}>
+                    <OutputPanel />
+                </div>
+            )}
         </div>
     );
 }
@@ -913,15 +993,15 @@ function SocialPanel() {
                 </div>
                 <div className="card__body">
                     <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                        <button className={`social-btn ${linkedin.isConnected ? 'social-btn--linkedin' : ''}`}>
+                        <button className={`social-btn ${linkedin?.isConnected ? 'social-btn--linkedin' : ''}`}>
                             <FiLinkedin size={20} />
-                            <span>{linkedin.isConnected ? 'LinkedIn Connected' : 'Connect LinkedIn'}</span>
-                            {linkedin.isConnected && <FiCheckCircle style={{ marginLeft: 'auto' }} />}
+                            <span>{linkedin?.isConnected ? 'LinkedIn Connected' : 'Connect LinkedIn'}</span>
+                            {linkedin?.isConnected && <FiCheckCircle style={{ marginLeft: 'auto' }} />}
                         </button>
-                        <button className={`social-btn ${twitter.isConnected ? 'social-btn--twitter' : ''}`}>
+                        <button className={`social-btn ${twitter?.isConnected ? 'social-btn--twitter' : ''}`}>
                             <FiTwitter size={20} />
-                            <span>{twitter.isConnected ? 'Twitter Connected' : 'Connect Twitter / X'}</span>
-                            {twitter.isConnected && <FiCheckCircle style={{ marginLeft: 'auto' }} />}
+                            <span>{twitter?.isConnected ? 'Twitter Connected' : 'Connect Twitter / X'}</span>
+                            {twitter?.isConnected && <FiCheckCircle style={{ marginLeft: 'auto' }} />}
                         </button>
                     </div>
                 </div>
@@ -1025,8 +1105,8 @@ function NoteEditorPanel() {
 
     const filteredNotes = searchQuery
         ? notes.filter(n =>
-            n.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
-            n.content.toLowerCase().includes(searchQuery.toLowerCase())
+            n.title?.toLowerCase().includes(searchQuery.toLowerCase()) ||
+            n.content?.toLowerCase().includes(searchQuery.toLowerCase())
         )
         : notes;
 
@@ -1068,7 +1148,7 @@ function NoteEditorPanel() {
                             >
                                 <div className="note-item__header">
                                     <span className="note-item__title">
-                                        {note.pinned && <FiPin size={10} style={{ marginRight: '4px' }} />}
+                                        {note.pinned && <FiMapPin size={10} style={{ marginRight: '4px' }} />}
                                         {note.title || 'Untitled'}
                                     </span>
                                     <span className="note-item__date">
@@ -1100,7 +1180,7 @@ function NoteEditorPanel() {
                                     onClick={() => handleTogglePin(activeNote.id)}
                                     title={activeNote.pinned ? 'Unpin' : 'Pin'}
                                 >
-                                    <FiPin style={{ color: activeNote.pinned ? 'var(--warning)' : undefined }} />
+                                    <FiMapPin style={{ color: activeNote.pinned ? 'var(--warning)' : undefined }} />
                                 </button>
                                 <button
                                     className="btn btn--ghost btn--icon"
@@ -1252,8 +1332,10 @@ function LearningPanel() {
 }
 
 // Right Panel Component
+// Right Panel Component
 function RightPanel({ style, editorMinimized }) {
     const { rightPanelOpen, rightPanelTab, setRightPanelTab, toggleRightPanel, rightPanelExpanded, toggleRightPanelExpanded } = useUIStore();
+    const { files, activeFileId } = useFileStore();
 
     if (!rightPanelOpen) {
         return (
@@ -1270,6 +1352,7 @@ function RightPanel({ style, editorMinimized }) {
     }
 
     const tabs = [
+        { id: 'preview', label: 'Preview', icon: <FiEye /> },
         { id: 'github', label: 'GitHub', icon: <FiGithub /> },
         { id: 'social', label: 'Social', icon: <FiShare2 /> },
         { id: 'notes', label: 'Notes', icon: <FiFileText /> },
@@ -1309,6 +1392,7 @@ function RightPanel({ style, editorMinimized }) {
                 </button>
             </div>
 
+            {rightPanelTab === 'preview' && <WebPreview files={files} activeFileId={activeFileId} />}
             {rightPanelTab === 'github' && <GitHubPanel />}
             {rightPanelTab === 'social' && <SocialPanel />}
             {rightPanelTab === 'notes' && <NoteEditorPanel />}
@@ -1591,11 +1675,235 @@ function Notifications() {
     );
 }
 
+// Settings Modal
+// Settings Modal
+function SettingsModal() {
+    const { modals, closeModal } = useUIStore();
+    const {
+        theme, backgroundImage, backgroundOpacity, format, features,
+        setTheme, setBackgroundImage, setBackgroundOpacity,
+        updateFormat, toggleFeature, setFeature
+    } = useSettingsStore();
+    const [activeTab, setActiveTab] = useState('theme');
+
+    const handleImageUpload = (e) => {
+        const file = e.target.files[0];
+        if (file) {
+            const reader = new FileReader();
+            reader.onloadend = () => {
+                setBackgroundImage(reader.result);
+            };
+            reader.readAsDataURL(file);
+        }
+    };
+
+    if (!modals.settings) return null;
+
+    return (
+        <div className="modal-overlay">
+            <div className="modal modal--large" style={{ maxWidth: '600px', height: 'auto' }}>
+                <div className="modal__header">
+                    <h2 className="modal__title">Settings</h2>
+                    <button className="btn btn--ghost btn--icon" onClick={() => closeModal('settings')}>
+                        <FiX />
+                    </button>
+                </div>
+                <div className="modal__body" style={{ padding: 0 }}>
+                    <div className="settings-container" style={{ display: 'flex', minHeight: '400px' }}>
+                        {/* Settings Sidebar */}
+                        <div className="settings-sidebar" style={{ width: '150px', borderRight: '1px solid var(--border-primary)', padding: '1rem 0' }}>
+                            <button
+                                className={`settings-tab-btn ${activeTab === 'theme' ? 'active' : ''}`}
+                                onClick={() => setActiveTab('theme')}
+                                style={{ display: 'flex', alignItems: 'center', width: '100%', padding: '0.75rem 1rem', background: 'none', border: 'none', color: activeTab === 'theme' ? 'var(--accent-primary)' : 'var(--text-secondary)', cursor: 'pointer', textAlign: 'left' }}
+                            >
+                                <FiImage style={{ marginRight: '8px' }} /> Appearance
+                            </button>
+                            <button
+                                className={`settings-tab-btn ${activeTab === 'format' ? 'active' : ''}`}
+                                onClick={() => setActiveTab('format')}
+                                style={{ display: 'flex', alignItems: 'center', width: '100%', padding: '0.75rem 1rem', background: 'none', border: 'none', color: activeTab === 'format' ? 'var(--accent-primary)' : 'var(--text-secondary)', cursor: 'pointer', textAlign: 'left' }}
+                            >
+                                <FiEdit3 style={{ marginRight: '8px' }} /> Editor
+                            </button>
+                            <button
+                                className={`settings-tab-btn ${activeTab === 'features' ? 'active' : ''}`}
+                                onClick={() => setActiveTab('features')}
+                                style={{ display: 'flex', alignItems: 'center', width: '100%', padding: '0.75rem 1rem', background: 'none', border: 'none', color: activeTab === 'features' ? 'var(--accent-primary)' : 'var(--text-secondary)', cursor: 'pointer', textAlign: 'left' }}
+                            >
+                                <FiCpu style={{ marginRight: '8px' }} /> Features
+                            </button>
+                        </div>
+
+                        {/* Settings Content */}
+                        <div className="settings-content" style={{ flex: 1, padding: '1.5rem' }}>
+                            {activeTab === 'theme' && (
+                                <div className="settings-section">
+                                    <h3 style={{ marginBottom: '1rem', borderBottom: '1px solid var(--border-primary)', paddingBottom: '0.5rem' }}>Appearance</h3>
+
+                                    <div className="form-group" style={{ marginBottom: '1.5rem' }}>
+                                        <label>Editor Theme</label>
+                                        <select
+                                            className="input-select"
+                                            value={theme}
+                                            onChange={(e) => setTheme(e.target.value)}
+                                            style={{ width: '100%' }}
+                                        >
+                                            <option value="vs-dark">Dark (Default)</option>
+                                            <option value="light">Light</option>
+                                            <option value="hc-black">High Contrast</option>
+                                        </select>
+                                    </div>
+
+                                    <div className="form-group" style={{ marginBottom: '1.5rem' }}>
+                                        <label>Background Image</label>
+                                        <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                                            {backgroundImage ? (
+                                                <div style={{ position: 'relative', width: '100%', height: '150px', borderRadius: '8px', overflow: 'hidden', border: '1px solid var(--border-primary)' }}>
+                                                    <img src={backgroundImage} alt="Background" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                                                    <button
+                                                        className="btn btn--ghost btn--icon"
+                                                        onClick={() => setBackgroundImage(null)}
+                                                        style={{ position: 'absolute', top: '5px', right: '5px', background: 'rgba(0,0,0,0.5)', color: 'white' }}
+                                                        title="Remove Image"
+                                                    >
+                                                        <FiTrash2 />
+                                                    </button>
+                                                </div>
+                                            ) : (
+                                                <div style={{
+                                                    border: '2px dashed var(--border-primary)',
+                                                    borderRadius: '8px',
+                                                    padding: '2rem',
+                                                    textAlign: 'center',
+                                                    cursor: 'pointer',
+                                                    position: 'relative'
+                                                }}>
+                                                    <input
+                                                        type="file"
+                                                        accept="image/*"
+                                                        onChange={handleImageUpload}
+                                                        style={{ position: 'absolute', top: 0, left: 0, width: '100%', height: '100%', opacity: 0, cursor: 'pointer' }}
+                                                    />
+                                                    <FiImage size={24} style={{ marginBottom: '0.5rem', color: 'var(--text-secondary)' }} />
+                                                    <p style={{ margin: 0, color: 'var(--text-secondary)' }}>Click to upload image</p>
+                                                </div>
+                                            )}
+                                        </div>
+                                    </div>
+
+                                    <div className="form-group" style={{ marginBottom: '1.5rem' }}>
+                                        <label>Background Opacity ({Math.round(backgroundOpacity * 100)}%)</label>
+                                        <input
+                                            type="range"
+                                            min="0"
+                                            max="1"
+                                            step="0.05"
+                                            value={backgroundOpacity}
+                                            onChange={(e) => setBackgroundOpacity(parseFloat(e.target.value))}
+                                            style={{ width: '100%' }}
+                                        />
+                                    </div>
+                                </div>
+                            )}
+
+                            {activeTab === 'format' && (
+                                <div className="settings-section">
+                                    <h3 style={{ marginBottom: '1rem', borderBottom: '1px solid var(--border-primary)', paddingBottom: '0.5rem' }}>Editor Format</h3>
+
+                                    <div className="form-group" style={{ marginBottom: '1rem' }}>
+                                        <label>Font Size ({format.fontSize}px)</label>
+                                        <input
+                                            type="range"
+                                            min="10"
+                                            max="32"
+                                            value={format.fontSize}
+                                            onChange={(e) => updateFormat('fontSize', parseInt(e.target.value))}
+                                            style={{ width: '100%' }}
+                                        />
+                                    </div>
+
+                                    <div className="form-group" style={{ marginBottom: '1rem' }}>
+                                        <label>Tab Size</label>
+                                        <select
+                                            className="input-select"
+                                            value={format.tabSize}
+                                            onChange={(e) => updateFormat('tabSize', parseInt(e.target.value))}
+                                            style={{ width: '100%' }}
+                                        >
+                                            <option value="2">2 Spaces</option>
+                                            <option value="4">4 Spaces</option>
+                                            <option value="8">8 Spaces</option>
+                                        </select>
+                                    </div>
+
+                                    <div className="form-group" style={{ marginBottom: '1rem' }}>
+                                        <label>Word Wrap</label>
+                                        <select
+                                            className="input-select"
+                                            value={format.wordWrap}
+                                            onChange={(e) => updateFormat('wordWrap', e.target.value)}
+                                            style={{ width: '100%' }}
+                                        >
+                                            <option value="on">On</option>
+                                            <option value="off">Off</option>
+                                            <option value="wordWrapColumn">Wrap at Column</option>
+                                        </select>
+                                    </div>
+                                </div>
+                            )}
+
+                            {activeTab === 'features' && (
+                                <div className="settings-section">
+                                    <h3 style={{ marginBottom: '1rem', borderBottom: '1px solid var(--border-primary)', paddingBottom: '0.5rem' }}>Features</h3>
+
+                                    <div className="form-check" style={{ marginBottom: '0.75rem', display: 'flex', alignItems: 'center' }}>
+                                        <input
+                                            type="checkbox"
+                                            checked={features.minimap}
+                                            onChange={() => toggleFeature('minimap')}
+                                            style={{ marginRight: '8px' }}
+                                        />
+                                        <label>Show Minimap</label>
+                                    </div>
+
+                                    <div className="form-check" style={{ marginBottom: '0.75rem', display: 'flex', alignItems: 'center' }}>
+                                        <input
+                                            type="checkbox"
+                                            checked={features.lineNumbers === 'on'}
+                                            onChange={(e) => setFeature('lineNumbers', e.target.checked ? 'on' : 'off')}
+                                            style={{ marginRight: '8px' }}
+                                        />
+                                        <label>Show Line Numbers</label>
+                                    </div>
+
+                                    <div className="form-check" style={{ marginBottom: '0.75rem', display: 'flex', alignItems: 'center' }}>
+                                        <input
+                                            type="checkbox"
+                                            checked={features.livePreview}
+                                            onChange={() => toggleFeature('livePreview')}
+                                            style={{ marginRight: '8px' }}
+                                        />
+                                        <label>Live Web Preview (Auto-open)</label>
+                                    </div>
+                                </div>
+                            )}
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    );
+}
+
 // Main App Component
 function App() {
-    const { sidebarOpen, toggleSidebar, openModal, addNotification, editorMinimized, toggleEditorMinimized } = useUIStore();
+    const {
+        sidebarOpen, toggleSidebar, openModal, addNotification, editorMinimized, toggleEditorMinimized,
+        rightPanelOpen, toggleRightPanel, setRightPanelTab
+    } = useUIStore();
     const { files, activeFileId, markFileSaved } = useFileStore();
-    const { isExecuting, setExecuting, setOutput, setError, setExecutionTime, addToHistory } = useExecutionStore();
+    const { isExecuting, setExecuting, setOutput, setError, setExecutionTime, addToHistory, setShowOutput } = useExecutionStore();
     const { setConnected, setRepositories, isConnected } = useGitHubStore();
     const [terminalOpen, setTerminalOpen] = useState(false);
 
@@ -1606,6 +1914,16 @@ function App() {
     const mainRef = React.useRef(null);
 
     const activeFile = files.find(f => f.id === activeFileId);
+
+    // Settings
+    const { theme, backgroundImage, backgroundOpacity } = useSettingsStore();
+
+    // Apply Theme
+    useEffect(() => {
+        // Map Monaco themes to CSS themes
+        const cssTheme = theme === 'light' ? 'light' : 'dark';
+        document.documentElement.setAttribute('data-theme', cssTheme);
+    }, [theme]);
 
     // Handle resize mouse events
     useEffect(() => {
@@ -1706,6 +2024,23 @@ function App() {
             return;
         }
 
+        // Check for Web/React content to open Preview
+        const isWeb = activeFile.language === 'html' ||
+            (activeFile.language === 'javascript' && (
+                activeFile.content.includes('import React') ||
+                activeFile.content.includes('export default') ||
+                activeFile.content.includes('document.') ||
+                activeFile.content.includes('window.') ||
+                activeFile.name.endsWith('.jsx')
+            ));
+
+        if (isWeb) {
+            if (!rightPanelOpen) toggleRightPanel();
+            setRightPanelTab('preview');
+            // Store the "run" action in history or notification
+            return;
+        }
+
         setExecuting(true);
         setOutput('');
         setError(null);
@@ -1716,20 +2051,23 @@ function App() {
             const result = await executorService.execute(activeFile.content, activeFile.language);
             const executionTime = Date.now() - startTime;
             setExecutionTime(executionTime);
+            setShowOutput(true);
 
             if (result.success) {
-                setOutput(result.output || 'Code executed successfully (no output)');
+                const outputStr = typeof result.output === 'string' ? result.output : JSON.stringify(result.output || 'Code executed successfully (no output)', null, 2);
+                setOutput(outputStr);
                 addToHistory({
                     success: true,
                     language: activeFile.language,
-                    output: result.output
+                    output: outputStr
                 });
             } else {
-                setError(result.error || 'Execution failed');
+                const errorStr = typeof result.error === 'string' ? result.error : JSON.stringify(result.error || 'Execution failed', null, 2);
+                setError(errorStr);
                 addToHistory({
                     success: false,
                     language: activeFile.language,
-                    error: result.error
+                    error: errorStr
                 });
             }
         } catch (error) {
@@ -1776,12 +2114,10 @@ function App() {
                     <button className="btn btn--ghost btn--icon" onClick={() => openModal('compilerManager')} title="Compiler Manager">
                         <FiTerminal />
                     </button>
-                    <button className="btn btn--ghost btn--icon" title="Settings">
+                    <button className="btn btn--ghost btn--icon" onClick={() => openModal('settings')} title="Settings">
                         <FiSettings />
                     </button>
-                    <button className="btn btn--primary">
-                        <FiUploadCloud /> Push
-                    </button>
+
                 </div>
             </header>
 
@@ -1898,6 +2234,7 @@ function App() {
             {/* Modals */}
             <NewFileModal />
             <CompilerManagerModal />
+            <SettingsModal />
 
             {/* Notifications */}
             <Notifications />

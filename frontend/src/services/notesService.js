@@ -12,7 +12,8 @@ const generateId = () => `note_${Date.now()}_${Math.random().toString(36).substr
 const getStoredNotes = () => {
     try {
         const stored = localStorage.getItem(NOTES_STORAGE_KEY);
-        return stored ? JSON.parse(stored) : [];
+        const parsed = stored ? JSON.parse(stored) : [];
+        return Array.isArray(parsed) ? parsed : [];
     } catch (error) {
         console.error('Failed to load notes:', error);
         return [];

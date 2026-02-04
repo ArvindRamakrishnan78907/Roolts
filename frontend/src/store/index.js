@@ -264,6 +264,64 @@ export const useUIStore = create((set) => ({
     }))
 }));
 
+// Settings Store - manages user preferences (persisted)
+export const useSettingsStore = create(
+    persist(
+        (set) => ({
+            theme: 'vs-dark', // vs-dark, light, high-contrast-black
+            backgroundImage: null, // Base64 or URL
+            backgroundOpacity: 0.1, // 0 to 1
+            format: {
+                fontSize: 14,
+                tabSize: 4,
+                wordWrap: 'on', // on, off, wordWrapColumn, bounded
+                fontFamily: "'Fira Code', Consolas, 'Courier New', monospace",
+                lineHeight: 1.5
+            },
+            features: {
+                minimap: true,
+                lineNumbers: 'on', // on, off, relative, interval
+                autoSave: false,
+                livePreview: true,
+                vimMode: false
+            },
+
+            setTheme: (theme) => set({ theme }),
+            setBackgroundImage: (image) => set({ backgroundImage: image }),
+            setBackgroundOpacity: (opacity) => set({ backgroundOpacity: opacity }),
+            updateFormat: (key, value) => set((state) => ({
+                format: { ...state.format, [key]: value }
+            })),
+            toggleFeature: (key) => set((state) => ({
+                features: { ...state.features, [key]: !state.features[key] }
+            })),
+            setFeature: (key, value) => set((state) => ({
+                features: { ...state.features, [key]: value }
+            })),
+            resetSettings: () => set({
+                theme: 'vs-dark',
+                format: {
+                    fontSize: 14,
+                    tabSize: 4,
+                    wordWrap: 'on',
+                    fontFamily: "'Fira Code', Consolas, 'Courier New', monospace",
+                    lineHeight: 1.5
+                },
+                features: {
+                    minimap: true,
+                    lineNumbers: 'on',
+                    autoSave: false,
+                    livePreview: true,
+                    vimMode: false
+                }
+            })
+        }),
+        {
+            name: 'roolts-settings-storage'
+        }
+    )
+);
+
 // Notes Store - manages notes for the note editor
 export const useNotesStore = create((set, get) => ({
     notes: [],
