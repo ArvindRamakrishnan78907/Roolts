@@ -53,7 +53,6 @@ def linkedin_post(user):
             # Save to DB? Implicitly handled next commit
         else:
              return jsonify({'error': 'Failed to get LinkedIn profile'}), 400
-
     # Create post
     post_data = {
         'author': user_urn,

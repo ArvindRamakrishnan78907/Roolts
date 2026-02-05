@@ -450,6 +450,7 @@ function CodeEditor() {
         return 'vs-dark'; // Default for dark, nord, dracula
     };
 
+
     return (
         <div className="monaco-wrapper" style={{ position: 'relative' }}>
             {backgroundImage && (
@@ -1130,8 +1131,8 @@ function SocialPanel() {
                             {twitter?.isConnected && <FiCheckCircle style={{ marginLeft: 'auto' }} />}
                         </button>
                     </div>
-                </div>
-            </div>
+                </div >
+            </div >
 
             <div className="card">
                 <div className="card__header">
@@ -1187,8 +1188,8 @@ function SocialPanel() {
                         )}
                     </button>
                 </div>
-            </div>
-        </div>
+            </div >
+        </div >
     );
 }
 
@@ -1941,8 +1942,8 @@ function SettingsModal() {
                                             <option value="nord">Nord</option>
                                             <option value="dracula">Dracula</option>
                                             <option value="solarized-light">Solarized Light</option>
-                                        </select>
-                                    </div>
+                                        </select >
+                                    </div >
 
                                     <div className="form-group" style={{ marginBottom: '1.5rem' }}>
                                         <label>Background Image</label>
@@ -2022,95 +2023,100 @@ function SettingsModal() {
                                             <option value="'Courier New'">Courier New (Monospace)</option>
                                         </select>
                                     </div>
-                                </div>
-                            )}
+                                </div >
+                            )
+                            }
 
-                            {activeTab === 'format' && (
-                                <div className="settings-section">
-                                    <h3 style={{ marginBottom: '1rem', borderBottom: '1px solid var(--border-primary)', paddingBottom: '0.5rem' }}>Editor Format</h3>
+                            {
+                                activeTab === 'format' && (
+                                    <div className="settings-section">
+                                        <h3 style={{ marginBottom: '1rem', borderBottom: '1px solid var(--border-primary)', paddingBottom: '0.5rem' }}>Editor Format</h3>
 
-                                    <div className="form-group" style={{ marginBottom: '1rem' }}>
-                                        <label>Font Size ({format.fontSize}px)</label>
-                                        <input
-                                            type="range"
-                                            min="10"
-                                            max="32"
-                                            value={format.fontSize}
-                                            onChange={(e) => updateFormat('fontSize', parseInt(e.target.value))}
-                                            style={{ width: '100%' }}
-                                        />
+                                        <div className="form-group" style={{ marginBottom: '1rem' }}>
+                                            <label>Font Size ({format.fontSize}px)</label>
+                                            <input
+                                                type="range"
+                                                min="10"
+                                                max="32"
+                                                value={format.fontSize}
+                                                onChange={(e) => updateFormat('fontSize', parseInt(e.target.value))}
+                                                style={{ width: '100%' }}
+                                            />
+                                        </div>
+
+                                        <div className="form-group" style={{ marginBottom: '1rem' }}>
+                                            <label>Tab Size</label>
+                                            <select
+                                                className="input-select"
+                                                value={format.tabSize}
+                                                onChange={(e) => updateFormat('tabSize', parseInt(e.target.value))}
+                                                style={{ width: '100%' }}
+                                            >
+                                                <option value="2">2 Spaces</option>
+                                                <option value="4">4 Spaces</option>
+                                                <option value="8">8 Spaces</option>
+                                            </select>
+                                        </div>
+
+                                        <div className="form-group" style={{ marginBottom: '1rem' }}>
+                                            <label>Word Wrap</label>
+                                            <select
+                                                className="input-select"
+                                                value={format.wordWrap}
+                                                onChange={(e) => updateFormat('wordWrap', e.target.value)}
+                                                style={{ width: '100%' }}
+                                            >
+                                                <option value="on">On</option>
+                                                <option value="off">Off</option>
+                                                <option value="wordWrapColumn">Wrap at Column</option>
+                                            </select>
+                                        </div>
                                     </div>
+                                )
+                            }
 
-                                    <div className="form-group" style={{ marginBottom: '1rem' }}>
-                                        <label>Tab Size</label>
-                                        <select
-                                            className="input-select"
-                                            value={format.tabSize}
-                                            onChange={(e) => updateFormat('tabSize', parseInt(e.target.value))}
-                                            style={{ width: '100%' }}
-                                        >
-                                            <option value="2">2 Spaces</option>
-                                            <option value="4">4 Spaces</option>
-                                            <option value="8">8 Spaces</option>
-                                        </select>
+                            {
+                                activeTab === 'features' && (
+                                    <div className="settings-section">
+                                        <h3 style={{ marginBottom: '1rem', borderBottom: '1px solid var(--border-primary)', paddingBottom: '0.5rem' }}>Features</h3>
+
+                                        <div className="form-check" style={{ marginBottom: '0.75rem', display: 'flex', alignItems: 'center' }}>
+                                            <input
+                                                type="checkbox"
+                                                checked={features.minimap}
+                                                onChange={() => toggleFeature('minimap')}
+                                                style={{ marginRight: '8px' }}
+                                            />
+                                            <label>Show Minimap</label>
+                                        </div>
+
+                                        <div className="form-check" style={{ marginBottom: '0.75rem', display: 'flex', alignItems: 'center' }}>
+                                            <input
+                                                type="checkbox"
+                                                checked={features.lineNumbers === 'on'}
+                                                onChange={(e) => setFeature('lineNumbers', e.target.checked ? 'on' : 'off')}
+                                                style={{ marginRight: '8px' }}
+                                            />
+                                            <label>Show Line Numbers</label>
+                                        </div>
+
+                                        <div className="form-check" style={{ marginBottom: '0.75rem', display: 'flex', alignItems: 'center' }}>
+                                            <input
+                                                type="checkbox"
+                                                checked={features.livePreview}
+                                                onChange={() => toggleFeature('livePreview')}
+                                                style={{ marginRight: '8px' }}
+                                            />
+                                            <label>Live Web Preview (Auto-open)</label>
+                                        </div>
                                     </div>
-
-                                    <div className="form-group" style={{ marginBottom: '1rem' }}>
-                                        <label>Word Wrap</label>
-                                        <select
-                                            className="input-select"
-                                            value={format.wordWrap}
-                                            onChange={(e) => updateFormat('wordWrap', e.target.value)}
-                                            style={{ width: '100%' }}
-                                        >
-                                            <option value="on">On</option>
-                                            <option value="off">Off</option>
-                                            <option value="wordWrapColumn">Wrap at Column</option>
-                                        </select>
-                                    </div>
-                                </div>
-                            )}
-
-                            {activeTab === 'features' && (
-                                <div className="settings-section">
-                                    <h3 style={{ marginBottom: '1rem', borderBottom: '1px solid var(--border-primary)', paddingBottom: '0.5rem' }}>Features</h3>
-
-                                    <div className="form-check" style={{ marginBottom: '0.75rem', display: 'flex', alignItems: 'center' }}>
-                                        <input
-                                            type="checkbox"
-                                            checked={features.minimap}
-                                            onChange={() => toggleFeature('minimap')}
-                                            style={{ marginRight: '8px' }}
-                                        />
-                                        <label>Show Minimap</label>
-                                    </div>
-
-                                    <div className="form-check" style={{ marginBottom: '0.75rem', display: 'flex', alignItems: 'center' }}>
-                                        <input
-                                            type="checkbox"
-                                            checked={features.lineNumbers === 'on'}
-                                            onChange={(e) => setFeature('lineNumbers', e.target.checked ? 'on' : 'off')}
-                                            style={{ marginRight: '8px' }}
-                                        />
-                                        <label>Show Line Numbers</label>
-                                    </div>
-
-                                    <div className="form-check" style={{ marginBottom: '0.75rem', display: 'flex', alignItems: 'center' }}>
-                                        <input
-                                            type="checkbox"
-                                            checked={features.livePreview}
-                                            onChange={() => toggleFeature('livePreview')}
-                                            style={{ marginRight: '8px' }}
-                                        />
-                                        <label>Live Web Preview (Auto-open)</label>
-                                    </div>
-                                </div>
-                            )}
-                        </div>
-                    </div>
-                </div>
-            </div>
-        </div>
+                                )
+                            }
+                        </div >
+                    </div >
+                </div >
+            </div >
+        </div >
     );
 }
 
@@ -2287,7 +2293,6 @@ function App() {
         };
         handleSocialCallbacks();
     }, []);
-
 
     const handleSave = () => {
         addNotification({ type: 'success', message: 'File saved successfully!' });
