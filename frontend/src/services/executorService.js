@@ -6,10 +6,11 @@
 
 import axios from 'axios';
 
-// Use environment variable if available, otherwise relative (proxy)
+const API_URL = import.meta.env.VITE_API_URL
+    ? `${import.meta.env.VITE_API_URL}/api/executor`
+    : '/api/executor';
 const executorApi = axios.create({
-    // DIRECT CONNECTION (Bypassing Proxy for Debugging)
-    baseURL: 'http://127.0.0.1:5000/api/executor',
+    baseURL: API_URL,
     timeout: 60000, // 60 seconds for code execution
     headers: {
         'Content-Type': 'application/json'

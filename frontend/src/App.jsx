@@ -61,7 +61,7 @@ import {
     useSnippetStore
 } from './store';
 import { authService } from './services/authService';
-import { socialService, githubService } from './services/api';
+import { socialService, githubService, aiService } from './services/api';
 import { notesService } from './services/notesService';
 import { executorService } from './services/executorService';
 import { terminalService } from './services/terminalService';
@@ -1462,9 +1462,79 @@ function NoteEditorPanel() {
 
 // Learning Panel Component
 function LearningPanel() {
-    const { explanation, diagram, resources, isGenerating, activeTab, setActiveTab } = useLearningStore();
+    const {
+        explanation, diagram, resources, isGenerating, activeTab,
+        chatMessages, addChatMessage, clearChat,
+        setActiveTab, setExplanation, setDiagram, setResources, setGenerating
+    } = useLearningStore();
+    const [chatQuery, setChatQuery] = useState('');
+    const [isChatting, setIsChatting] = useState(false);
+    const { addNotification } = useUIStore();
     const { files, activeFileId } = useFileStore();
     const activeFile = files.find((f) => f.id === activeFileId);
+
+    const handleChat = async (e) => {
+        if (e) e.preventDefault();
+        if (!chatQuery.trim() || !activeFile || isChatting) return;
+
+        const query = chatQuery;
+        setChatQuery('');
+        setIsChatting(true);
+
+        // Add user message to history
+        addChatMessage({ role: 'user', content: query });
+
+        try {
+            const response = await aiService.chat(
+                activeFile.content,
+                activeFile.language,
+                query,
+                chatMessages
+            );
+
+            // Add AI response to history
+            addChatMessage({
+                role: 'assistant',
+                content: response.data.response,
+                model: response.data.model,
+                provider: response.data.provider
+            });
+        } catch (error) {
+            console.error('AI Chat failed:', error);
+            addNotification({
+                type: 'error',
+                message: 'AI Chat failed. Please try again.'
+            });
+        } finally {
+            setIsChatting(false);
+        }
+    };
+
+    const handleAnalyze = async () => {
+        if (!activeFile) return;
+
+        setGenerating(true);
+        clearChat();
+        try {
+            const response = await aiService.analyzeCode(activeFile.content, activeFile.language);
+            setExplanation(response.data.explanation);
+            setDiagram(response.data.diagram);
+            setResources(response.data.resources);
+
+            addNotification({
+                type: 'success',
+                message: 'Analysis complete!'
+            });
+        } catch (error) {
+            console.error('AI Analysis failed:', error);
+            addNotification({
+                type: 'error',
+                message: 'AI Analysis failed. Please check your API keys.'
+            });
+        } finally {
+            setGenerating(false);
+        }
+    };
 
     const tabs = [
         { id: 'explain', label: 'Explain', icon: <FiBookOpen /> },
@@ -1500,6 +1570,7 @@ function LearningPanel() {
                             className="btn btn--primary"
                             style={{ width: '100%', marginBottom: '16px' }}
                             disabled={isGenerating}
+                            onClick={handleAnalyze}
                         >
                             {isGenerating ? (
                                 <><span className="spinner" /> Analyzing...</>
@@ -1514,7 +1585,46 @@ function LearningPanel() {
                                     <FiBookOpen /> Code Explanation
                                 </div>
                                 <div className="learning-card__content">
-                                    {explanation || (
+                                    {explanation ? (
+                                        <div className="explanation-markdown">
+                                            {explanation}
+
+                                            {/* Chat History */}
+                                            {chatMessages.length > 0 && (
+                                                <div className="learning-chat">
+                                                    {chatMessages.map((msg, idx) => (
+                                                        <div key={idx} className={`chat-message chat-message--${msg.role}`}>
+                                                            {msg.content}
+                                                        </div>
+                                                    ))}
+                                                    {isChatting && (
+                                                        <div className="chat-message chat-message--ai">
+                                                            <span className="spinner spinner--small" /> AI is thinking...
+                                                        </div>
+                                                    )}
+                                                </div>
+                                            )}
+
+                                            {/* Chat Input Bar */}
+                                            <form className="chat-input-wrapper" onSubmit={handleChat}>
+                                                <input
+                                                    type="text"
+                                                    className="chat-input"
+                                                    placeholder="Ask a follow-up question..."
+                                                    value={chatQuery}
+                                                    onChange={(e) => setChatQuery(e.target.value)}
+                                                    disabled={isChatting}
+                                                />
+                                                <button
+                                                    type="submit"
+                                                    className="btn btn--ghost btn--icon"
+                                                    disabled={!chatQuery.trim() || isChatting}
+                                                >
+                                                    <FiSend />
+                                                </button>
+                                            </form>
+                                        </div>
+                                    ) : (
                                         <p style={{ color: 'var(--text-muted)', fontStyle: 'italic' }}>
                                             Click "Analyze Code with AI" to get an explanation of your code.
                                         </p>
@@ -1655,13 +1765,47 @@ function NewFileModal() {
     const { addFile } = useFileStore();
     const [fileName, setFileName] = useState('');
     const [language, setLanguage] = useState('javascript');
+    const [isManualSelection, setIsManualSelection] = useState(false);
 
     if (!modals.newFile) return null;
+
+    // Extension to language mapping
+    const extensionMap = {
+        'js': 'javascript',
+        'jsx': 'javascript',
+        'py': 'python',
+        'java': 'java',
+        'html': 'html',
+        'htm': 'html',
+        'css': 'css',
+        'json': 'json',
+        'txt': 'plaintext',
+        'md': 'plaintext'
+    };
+
+    const handleFileNameChange = (e) => {
+        const value = e.target.value;
+        setFileName(value);
+
+        if (!isManualSelection) {
+            const ext = value.split('.').pop().toLowerCase();
+            if (extensionMap[ext]) {
+                setLanguage(extensionMap[ext]);
+            }
+        }
+    };
+
+    const handleLanguageChange = (e) => {
+        setLanguage(e.target.value);
+        setIsManualSelection(true);
+    };
 
     const handleCreate = () => {
         if (fileName.trim()) {
             addFile(fileName, '', language);
             setFileName('');
+            setLanguage('javascript');
+            setIsManualSelection(false);
             closeModal('newFile');
         }
     };
@@ -1682,7 +1826,7 @@ function NewFileModal() {
                         className="input"
                         placeholder="e.g., app.js, main.py"
                         value={fileName}
-                        onChange={(e) => setFileName(e.target.value)}
+                        onChange={handleFileNameChange}
                         style={{ marginBottom: '16px' }}
                         autoFocus
                     />
@@ -1691,7 +1835,7 @@ function NewFileModal() {
                     <select
                         className="input"
                         value={language}
-                        onChange={(e) => setLanguage(e.target.value)}
+                        onChange={handleLanguageChange}
                     >
                         <option value="javascript">JavaScript</option>
                         <option value="python">Python</option>
@@ -1703,7 +1847,12 @@ function NewFileModal() {
                     </select>
                 </div>
                 <div className="modal__footer">
-                    <button className="btn btn--secondary" onClick={() => closeModal('newFile')}>
+                    <button className="btn btn--secondary" onClick={() => {
+                        setFileName('');
+                        setLanguage('javascript');
+                        setIsManualSelection(false);
+                        closeModal('newFile');
+                    }}>
                         Cancel
                     </button>
                     <button className="btn btn--primary" onClick={handleCreate}>
@@ -1761,149 +1910,6 @@ function DeploymentModalComponent() {
     );
 }
 
-// Compiler Manager Modal
-function CompilerManagerModal() {
-    const { modals, closeModal, addNotification } = useUIStore();
-    const { compilers, setCompilerStatus } = useExecutionStore();
-    const [checking, setChecking] = useState(false);
-
-    if (!modals.compilerManager) return null;
-
-    const checkCompilers = async () => {
-        setChecking(true);
-        try {
-            const health = await executorService.health();
-            if (health.available) {
-                const languages = await executorService.getLanguages();
-                languages.forEach(lang => {
-                    setCompilerStatus(lang.id, {
-                        available: lang.available,
-                        version: lang.version
-                    });
-                });
-            }
-        } catch (error) {
-            console.error('Failed to check compilers:', error);
-        }
-        setChecking(false);
-    };
-
-    useEffect(() => {
-        if (modals.compilerManager) {
-            checkCompilers();
-        }
-    }, [modals.compilerManager]);
-
-    const compilerList = [
-        {
-            id: 'python',
-            name: 'Python',
-            icon: '🐍',
-            installCmd: 'winget install Python.Python.3',
-            downloadUrl: 'https://www.python.org/downloads/'
-        },
-        {
-            id: 'java',
-            name: 'Java (JDK)',
-            icon: '☕',
-            installCmd: 'winget install Microsoft.OpenJDK.17',
-            downloadUrl: 'https://adoptium.net/'
-        },
-        {
-            id: 'javascript',
-            name: 'Node.js',
-            icon: '📜',
-            installCmd: 'winget install OpenJS.NodeJS.LTS',
-            downloadUrl: 'https://nodejs.org/'
-        }
-    ];
-
-    return (
-        <div className="modal-overlay" onClick={() => closeModal('compilerManager')}>
-            <div className="modal" onClick={(e) => e.stopPropagation()}>
-                <div className="modal__header">
-                    <h3 className="modal__title"><FiTerminal style={{ marginRight: '8px' }} />Compiler Manager</h3>
-                    <button className="btn btn--ghost btn--icon" onClick={() => closeModal('compilerManager')}>
-                        <FiX />
-                    </button>
-                </div>
-                <div className="modal__body">
-                    <p style={{ fontSize: '13px', color: 'var(--text-secondary)', marginBottom: '16px' }}>
-                        Check and install compilers/interpreters for code execution.
-                    </p>
-
-                    {compilerList.map((compiler) => {
-                        const status = compilers[compiler.id];
-                        return (
-                            <div key={compiler.id} className="compiler-item" style={{
-                                padding: '12px',
-                                border: '1px solid var(--border-primary)',
-                                borderRadius: '8px',
-                                marginBottom: '12px'
-                            }}>
-                                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                                    <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                                        <span style={{ fontSize: '24px' }}>{compiler.icon}</span>
-                                        <div>
-                                            <div style={{ fontWeight: '500' }}>{compiler.name}</div>
-                                            <div style={{ fontSize: '12px', color: 'var(--text-muted)' }}>
-                                                {status?.version || 'Not detected'}
-                                            </div>
-                                        </div>
-                                    </div>
-                                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                                        {status?.available === true && (
-                                            <FiCheckCircle style={{ color: 'var(--success)' }} />
-                                        )}
-                                        {status?.available === false && (
-                                            <FiAlertCircle style={{ color: 'var(--error)' }} />
-                                        )}
-                                        {status?.available === null && (
-                                            <span style={{ color: 'var(--text-muted)', fontSize: '12px' }}>Unknown</span>
-                                        )}
-                                    </div>
-                                </div>
-
-                                {status?.available === false && (
-                                    <div style={{ marginTop: '12px', padding: '8px', background: 'var(--bg-tertiary)', borderRadius: '4px' }}>
-                                        <p style={{ fontSize: '12px', marginBottom: '8px' }}>Install using:</p>
-                                        <code style={{ fontSize: '11px', background: 'var(--bg-primary)', padding: '4px 8px', borderRadius: '4px' }}>
-                                            {compiler.installCmd}
-                                        </code>
-                                        <div style={{ marginTop: '8px' }}>
-                                            <a
-                                                href={compiler.downloadUrl}
-                                                target="_blank"
-                                                rel="noopener noreferrer"
-                                                style={{ fontSize: '12px', color: 'var(--info)' }}
-                                            >
-                                                <FiExternalLink size={12} /> Download manually
-                                            </a>
-                                        </div>
-                                    </div>
-                                )}
-                            </div>
-                        );
-                    })}
-
-                    <button
-                        className="btn btn--secondary"
-                        style={{ width: '100%' }}
-                        onClick={checkCompilers}
-                        disabled={checking}
-                    >
-                        {checking ? <><span className="spinner" /> Checking...</> : <><FiRefreshCw /> Refresh Status</>}
-                    </button>
-                </div>
-                <div className="modal__footer">
-                    <button className="btn btn--primary" onClick={() => closeModal('compilerManager')}>
-                        Done
-                    </button>
-                </div>
-            </div>
-        </div>
-    );
-}
 
 // Status Bar Component
 function StatusBar() {
@@ -2557,9 +2563,6 @@ function App() {
                     <button className="btn btn--ghost btn--icon" onClick={() => openModal('newFile')} title="New File">
                         <FiPlus />
                     </button>
-                    <button className="btn btn--ghost btn--icon" onClick={() => openModal('compilerManager')} title="Compiler Manager">
-                        <FiTerminal />
-                    </button>
                     <button className="btn btn--ghost btn--icon" onClick={() => openModal('settings')} title="Settings">
                         <FiSettings />
                     </button>
@@ -2685,7 +2688,6 @@ function App() {
 
             {/* Modals */}
             <NewFileModal />
-            <CompilerManagerModal />
             <SettingsModal />
             <PortfolioGeneratorModal />
             <DeploymentModalComponent />

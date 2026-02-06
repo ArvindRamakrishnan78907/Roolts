@@ -208,6 +208,7 @@ export const useLearningStore = create((set) => ({
     isGenerating: false,
     isReviewing: false,
     activeTab: 'explain',
+    chatMessages: [],
 
     setExplanation: (explanation) => set({ explanation }),
     setDiagram: (diagram) => set({ diagram }),
@@ -216,6 +217,10 @@ export const useLearningStore = create((set) => ({
     setGenerating: (isGenerating) => set({ isGenerating }),
     setReviewing: (isReviewing) => set({ isReviewing }),
     setActiveTab: (activeTab) => set({ activeTab }),
+    addChatMessage: (message) => set((state) => ({
+        chatMessages: [...state.chatMessages, { ...message, id: Date.now() }]
+    })),
+    clearChat: () => set({ chatMessages: [] }),
 
     reset: () => set({
         explanation: null,
@@ -239,7 +244,6 @@ export const useUIStore = create((set) => ({
         commitPush: false,
         share: false,
         settings: false,
-        compilerManager: false,
         portfolioGenerator: false,
         deployment: false
     },

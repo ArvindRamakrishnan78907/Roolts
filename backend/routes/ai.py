@@ -1,17 +1,26 @@
-"""
-AI Learning Features Routes
-Handles code explanation, diagram generation, and resource suggestions
-"""
-
 import os
 import re
 from flask import Blueprint, jsonify, request
 from services.multi_ai import MultiAIService
+from routes.auth import get_current_user
 
 ai_bp = Blueprint('ai', __name__)
 
-# OpenAI Configuration (for Kiro/AI features)
-OPENAI_API_KEY = os.getenv('OPENAI_API_KEY', '')
+def get_ai_service():
+    """Get AI service configured with user's API keys."""
+    user = get_current_user()
+    user_keys = {}
+    if user:
+        user_keys = {
+            'gemini': user.gemini_api_key,
+            'claude': user.claude_api_key,
+            'deepseek': user.deepseek_api_key,
+            'qwen': user.qwen_api_key
+        }
+        # Filter out None values
+        user_keys = {k: v for k, v in user_keys.items() if v}
+    
+    return MultiAIService(user_keys)
 
 
 def detect_language(code):
@@ -193,39 +202,24 @@ def explain_code():
     if not language:
         language = detect_language(code)
     
-    # In production, use OpenAI/Bedrock API
-    if OPENAI_API_KEY:
-        try:
-            import openai
-            
-            client = openai.OpenAI(api_key=OPENAI_API_KEY)
-            
-            response = client.chat.completions.create(
-                model="gpt-3.5-turbo",
-                messages=[
-                    {
-                        "role": "system",
-                        "content": "You are a helpful coding assistant. Explain the following code in a clear, educational way. Use markdown formatting."
-                    },
-                    {
-                        "role": "user",
-                        "content": f"Please explain this {language} code:\n\n```{language}\n{code}\n```"
-                    }
-                ],
-                max_tokens=1000
-            )
-            
-            explanation = response.choices[0].message.content
-            
-        except Exception as e:
-            # Fall back to mock explanation
-            explanation = generate_mock_explanation(code, language)
-    else:
+    service = get_ai_service()
+    system_prompt = "You are a helpful coding assistant. Explain the following code in a clear, educational way. Use markdown formatting."
+    prompt = f"Please explain this {language} code:\n\n```{language}\n{code}\n```"
+    
+    result = service.chat(prompt, model='auto', system_prompt=system_prompt)
+    
+    if 'error' in result:
         explanation = generate_mock_explanation(code, language)
+        # Add a note that it's a mock due to error
+        explanation = f"> [!WARNING]\n> AI Analysis failed ({result['error']}). Showing mock analysis instead.\n\n" + explanation
+    else:
+        explanation = result.get('response', '')
     
     return jsonify({
         'explanation': explanation,
-        'language': language
+        'language': language,
+        'provider': result.get('provider', 'Mock'),
+        'model': result.get('model', 'Mock')
     })
 
 
@@ -243,39 +237,25 @@ def generate_diagram():
     if not language:
         language = detect_language(code)
     
-    # In production, use AI to generate diagram
-    if OPENAI_API_KEY:
-        try:
-            import openai
-            
-            client = openai.OpenAI(api_key=OPENAI_API_KEY)
-            
-            response = client.chat.completions.create(
-                model="gpt-3.5-turbo",
-                messages=[
-                    {
-                        "role": "system",
-                        "content": "You are a code visualization expert. Generate Mermaid.js diagram code based on the provided code. Return ONLY the Mermaid diagram code, no markdown code blocks."
-                    },
-                    {
-                        "role": "user",
-                        "content": f"Create a {diagram_type} diagram for this {language} code:\n\n{code}"
-                    }
-                ],
-                max_tokens=500
-            )
-            
-            diagram = response.choices[0].message.content.strip()
-            
-        except Exception as e:
-            diagram = generate_mock_diagram(code, language)
-    else:
+    service = get_ai_service()
+    system_prompt = "You are a code visualization expert. Generate Mermaid.js diagram code based on the provided code. Return ONLY the Mermaid diagram code, no markdown code blocks."
+    prompt = f"Create a {diagram_type} diagram for this {language} code:\n\n{code}"
+    
+    result = service.chat(prompt, model='deepseek', system_prompt=system_prompt)
+    
+    if 'error' in result:
         diagram = generate_mock_diagram(code, language)
+    else:
+        diagram = result.get('response', '').strip()
+        # Clean up in case AI included code blocks
+        if diagram.startswith('```'):
+            diagram = re.sub(r'^```(mermaid)?\n|```$', '', diagram, flags=re.MULTILINE).strip()
     
     return jsonify({
         'diagram': diagram,
         'type': diagram_type,
-        'language': language
+        'language': language,
+        'provider': result.get('provider', 'Mock')
     })
 
 
@@ -310,16 +290,55 @@ def analyze_code():
     if not language:
         language = detect_language(code)
     
-    # Generate all components
-    explanation = generate_mock_explanation(code, language)
-    diagram = generate_mock_diagram(code, language)
+    service = get_ai_service()
+    
+    from concurrent.futures import ThreadPoolExecutor
+    
+    def get_explanation():
+        return service.chat(
+            f"Analyze this {language} code and explain it:\n\n{code}",
+            system_prompt="Analyze the code for a developer portfolio. Provide a professional explanation."
+        )
+    
+    def get_diagram():
+        return service.chat(
+            f"Generate a Mermaid flowchart for this {language} code:\n\n{code}",
+            model='deepseek',
+            system_prompt="Return ONLY the Mermaid.js graph code. No markdown."
+        )
+
+    # Use ThreadPoolExecutor for parallelism
+    with ThreadPoolExecutor(max_workers=2) as executor:
+        future_expl = executor.submit(get_explanation)
+        future_diag = executor.submit(get_diagram)
+        
+        expl_result = future_expl.result()
+        diag_result = future_diag.result()
+    
+    # 1. Explanation processing
+    if 'error' in expl_result:
+        explanation = generate_mock_explanation(code, language)
+        explanation = f"> [!WARNING]\n> AI Explanation failed ({expl_result['error']}). Showing mock analysis.\n\n" + explanation
+    else:
+        explanation = expl_result.get('response', '')
+    
+    # 2. Diagram processing
+    if 'error' in diag_result:
+        diagram = generate_mock_diagram(code, language)
+    else:
+        diagram = diag_result.get('response', '')
+        if diagram.startswith('```'):
+            diagram = re.sub(r'^```(mermaid)?\n|```$', '', diagram, flags=re.MULTILINE).strip()
+    
+    # 3. Resources (Mocking for now as it's just links)
     resources = generate_mock_resources(language)
     
     return jsonify({
         'explanation': explanation,
         'diagram': diagram,
         'resources': resources,
-        'language': language
+        'language': language,
+        'provider': expl_result.get('provider', 'Mock') if 'error' not in expl_result else 'Mock'
     })
 
 
@@ -432,3 +451,50 @@ def review_code():
     except Exception as e:
         print(f"Code review failed: {str(e)}")
         return jsonify({'error': str(e)}), 500
+@ai_bp.route('/chat', methods=['POST'])
+def chat_with_ai():
+    """Handle interactive chat about code."""
+    data = request.get_json()
+    code = data.get('code', '')
+    language = data.get('language', '')
+    query = data.get('query', '')
+    history = data.get('history', []) # List of {role: 'user'|'assistant', content: '...'}
+    
+    if not query:
+        return jsonify({'error': 'Query is required'}), 400
+    
+    if not language and code:
+        language = detect_language(code)
+    
+    service = get_ai_service()
+    
+    # Construct context-aware system prompt
+    system_prompt = (
+        "You are an expert full-stack developer and technical mentor. "
+        "Your goal is to help the user understand, debug, and optimize their code. "
+        "Provide specific, technical, and actionable advice. "
+        "Always use markdown for code snippets. "
+        "If the user asks for changes, explain why they are beneficial."
+    )
+    
+    if code:
+        system_prompt += f"\n\nContext Code ({language}):\n```{language}\n{code}\n```"
+    
+    # Format history for the prompt
+    history_context = ""
+    for msg in history[-5:]: # Keep last 5 messages for context
+        role = "User" if msg.get('role') == 'user' else "AI"
+        history_context += f"{role}: {msg.get('content')}\n"
+    
+    full_prompt = f"{history_context}User: {query}\nAI:"
+    
+    result = service.chat(full_prompt, model='deepseek', system_prompt=system_prompt)
+    
+    if 'error' in result:
+        return jsonify({'error': result['error']}), 500
+        
+    return jsonify({
+        'response': result.get('response', ''),
+        'provider': result.get('provider'),
+        'model': result.get('model')
+    })

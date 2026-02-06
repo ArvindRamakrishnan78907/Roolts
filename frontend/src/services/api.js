@@ -7,7 +7,7 @@ const API_BASE_URL = import.meta.env.VITE_API_URL
 // Create axios instance with default config
 const api = axios.create({
     baseURL: API_BASE_URL,
-    timeout: 30000,
+    timeout: 60000,
     headers: {
         'Content-Type': 'application/json'
     }
@@ -94,6 +94,8 @@ export const aiService = {
         api.post('/ai/diagram', { code, language, type }),
     suggestResources: (code, language) => api.post('/ai/resources', { code, language }),
     analyzeCode: (code, language) => api.post('/ai/analyze', { code, language }),
+    chat: (code, language, query, history) =>
+        api.post('/ai/chat', { code, language, query, history }),
     suggestCommitMessage: (files, diff) =>
         api.post('/ai/commit-message', { files, diff })
 };
@@ -104,7 +106,7 @@ const javaApi = axios.create({
     baseURL: import.meta.env.VITE_JAVA_API_URL
         ? `${import.meta.env.VITE_JAVA_API_URL}/api`
         : 'http://localhost:8080/api',
-    timeout: 30000,
+    timeout: 60000,
     headers: {
         'Content-Type': 'application/json'
     }

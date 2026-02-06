@@ -41,12 +41,13 @@ def execute_code():
                 f.write(code)
             
             # Execute Python using the current interpreter
+            # Use -u for unbuffered output to improve speed of reading large outputs
             result = subprocess.run(
-                [sys.executable, file_path],
+                [sys.executable, '-u', file_path],
                 cwd=temp_dir,
                 capture_output=True,
                 text=True,
-                timeout=30
+                timeout=60
             )
             output = result.stdout
             error = result.stderr
@@ -55,7 +56,7 @@ def execute_code():
         elif language == 'javascript' or language == 'js':
             fname = filename if filename and filename.endswith('.js') else 'script.js'
             file_path = os.path.join(temp_dir, fname)
-            with open(file_path, 'w') as f:
+            with open(file_path, 'w', encoding='utf-8') as f:
                 f.write(code)
             
             # Execute Node.js
@@ -64,8 +65,7 @@ def execute_code():
                 cwd=temp_dir,
                 capture_output=True,
                 text=True,
-                timeout=30
-                # shell=True removed as it breaks list args on Windows
+                timeout=60
             )
             output = result.stdout
             error = result.stderr
@@ -91,11 +91,10 @@ def execute_code():
 
             file_path = os.path.join(temp_dir, fname)
             
-            with open(file_path, 'w') as f:
+            with open(file_path, 'w', encoding='utf-8') as f:
                 f.write(code)
             
             # Compile Java
-            # -d . directs javac to create package directory structure in temp_dir
             compile_cmd = ['javac', '-d', '.', fname]
             
             compile_result = subprocess.run(
@@ -103,7 +102,7 @@ def execute_code():
                 cwd=temp_dir,
                 capture_output=True,
                 text=True,
-                timeout=30
+                timeout=60
             )
             
             if compile_result.returncode != 0:
@@ -117,7 +116,7 @@ def execute_code():
                     cwd=temp_dir,
                     capture_output=True,
                     text=True,
-                    timeout=30
+                    timeout=60
                 )
                 output = run_result.stdout
                 error = run_result.stderr
@@ -135,7 +134,7 @@ def execute_code():
     except subprocess.TimeoutExpired:
         return jsonify({
             'success': False,
-            'error': 'Execution timed out (30s limit)'
+            'error': 'Execution timed out (60s limit)'
         }), 408
     except Exception as e:
         return jsonify({

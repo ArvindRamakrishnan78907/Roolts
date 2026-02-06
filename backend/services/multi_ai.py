@@ -30,8 +30,8 @@ class GeminiProvider(AIProvider):
     
     def __init__(self, api_key: str = None):
         self.api_key = api_key or os.getenv('GEMINI_API_KEY', '')
-        self.base_url = 'https://generativelanguage.googleapis.com/v1beta'
-        self.model = 'gemini-1.5-flash'
+        self.base_url = 'https://generativelanguage.googleapis.com/v1'
+        self.model = 'gemini-2.0-flash'
     
     def is_configured(self) -> bool:
         return bool(self.api_key)
@@ -65,7 +65,10 @@ class GeminiProvider(AIProvider):
                     'provider': 'Google Gemini'
                 }
             
-            return {'error': data.get('error', {}).get('message', 'Unknown error')}
+            error_msg = data.get('error', {}).get('message', 'Unknown error')
+            print(f">>> Gemini API Error: {error_msg}")
+            print(f">>> Gemini API Full Response: {data}")
+            return {'error': error_msg}
         except Exception as e:
             return {'error': str(e)}
 

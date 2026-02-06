@@ -40,19 +40,7 @@ def create_app():
     init_db(app)
     
     # Enable CORS for frontend access
-    allowed_origins = [
-        'http://localhost:3000',
-        'http://127.0.0.1:3000',
-        'http://localhost:5173',  # Vite default
-        'http://127.0.0.1:5173'
-    ]
-    
-    # Add production frontend URL if set
-    frontend_url = os.getenv('FRONTEND_URL')
-    if frontend_url:
-        allowed_origins.append(frontend_url)
-    
-    CORS(app, origins=allowed_origins, supports_credentials=True)
+    CORS(app, resources={r"/api/*": {"origins": "*"}}, supports_credentials=True)
     
     # Register blueprints
     app.register_blueprint(auth_bp, url_prefix='/api/auth')      # Authentication
