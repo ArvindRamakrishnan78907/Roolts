@@ -20,6 +20,7 @@
 </p>
 
 ---
+This application is currently in development
 
 ## ✨ Features
 
