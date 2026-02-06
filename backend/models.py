@@ -1,8 +1,3 @@
-"""
-User Model and Database Setup
-Handles user authentication and social token storage
-"""
-
 import os
 from datetime import datetime
 from flask_sqlalchemy import SQLAlchemy
@@ -138,3 +133,17 @@ def init_db(app):
         db.create_all()
     
     return db
+
+
+if __name__ == "__main__":
+    print("="*50)
+    print("✅ models.py execution successful")
+    print("="*50)
+    print("This file defines the database models for Roolts.")
+    print("\n[Available Models]")
+    print(f"- User: {User}")
+    print(f"- SocialToken: {SocialToken}")
+    print(f"- Snippet: {Snippet}")
+    print("\nNote: This file is intended to be imported by the Flask app.")
+    print("To start the backend server, run 'app.py' instead.")
+

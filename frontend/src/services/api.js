@@ -1,6 +1,8 @@
 import axios from 'axios';
 
-const API_BASE_URL = '/api';
+const API_BASE_URL = import.meta.env.VITE_API_URL
+    ? `${import.meta.env.VITE_API_URL}/api`
+    : '/api';
 
 // Create axios instance with default config
 const api = axios.create({
@@ -58,7 +60,11 @@ export const githubService = {
     createRepo: (data) => api.post('/github/repos', data),
     push: (owner, repo, data) => api.post(`/github/repos/${owner}/${repo}/push`, data),
     clone: (owner, repo, branch = 'main') =>
-        api.post(`/github/repos/${owner}/${repo}/clone`, {}, { params: { branch } })
+        api.post(`/github/repos/${owner}/${repo}/clone`, {}, { params: { branch } }),
+    isAuthenticated: () => !!localStorage.getItem('github_token'),
+    clearToken: () => localStorage.removeItem('github_token'),
+    setToken: (token) => localStorage.setItem('github_token', token),
+    getCurrentUser: () => api.get('/github/user')
 };
 
 // ============ Social Media Operations ============
@@ -95,7 +101,9 @@ export const aiService = {
 // ============ Java Service (Advanced Analysis) ============
 
 const javaApi = axios.create({
-    baseURL: 'http://localhost:8080/api',
+    baseURL: import.meta.env.VITE_JAVA_API_URL
+        ? `${import.meta.env.VITE_JAVA_API_URL}/api`
+        : 'http://localhost:8080/api',
     timeout: 30000,
     headers: {
         'Content-Type': 'application/json'

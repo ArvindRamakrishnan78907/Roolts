@@ -105,6 +105,14 @@ export default App;
                 )
             })),
 
+            renameFile: (fileId, newName) => set((state) => ({
+                files: state.files.map((file) =>
+                    file.id === fileId
+                        ? { ...file, name: newName, path: file.path.substring(0, file.path.lastIndexOf('/') + 1) + newName }
+                        : file
+                )
+            })),
+
             getActiveFile: () => {
                 const state = get();
                 return state.files.find((file) => file.id === state.activeFileId);
