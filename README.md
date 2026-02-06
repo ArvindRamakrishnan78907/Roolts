@@ -1,4 +1,5 @@
-# Roolts - Advanced AI-Powered Portfolio App
+# Roolts - Advanced AI-Powered Code Editor and Portfolio Enhancement Application
+
 
 <p align="center">
   <img src="frontend/public/favicon.svg" alt="Roolts Logo" width="80" height="80">
