@@ -40,12 +40,19 @@ def create_app():
     init_db(app)
     
     # Enable CORS for frontend access
-    CORS(app, origins=[
+    allowed_origins = [
         'http://localhost:3000',
         'http://127.0.0.1:3000',
         'http://localhost:5173',  # Vite default
         'http://127.0.0.1:5173'
-    ], supports_credentials=True)
+    ]
+    
+    # Add production frontend URL if set
+    frontend_url = os.getenv('FRONTEND_URL')
+    if frontend_url:
+        allowed_origins.append(frontend_url)
+    
+    CORS(app, origins=allowed_origins, supports_credentials=True)
     
     # Register blueprints
     app.register_blueprint(auth_bp, url_prefix='/api/auth')      # Authentication
@@ -136,4 +143,5 @@ if __name__ == '__main__':
     print("=" * 50)
     print("\nPress Ctrl+C to stop\n")
     
-    app.run(host='0.0.0.0', port=5000, debug=True)
+    port = int(os.environ.get("PORT", 5000))
+    app.run(host='0.0.0.0', port=port, debug=os.environ.get("FLASK_DEBUG", "True") == "True")

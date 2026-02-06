@@ -31,3 +31,7 @@ pyyaml>=6.0.0
 # - CLAUDE_API_KEY for Anthropic Claude
 # - DEEPSEEK_API_KEY for DeepSeek
 # - QWEN_API_KEY for Alibaba Qwen
+
+# Production Server
+gunicorn>=21.2.0
+

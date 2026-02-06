@@ -9,6 +9,8 @@ import os
 import uuid
 import tempfile
 import shutil
+import sys
+import re
 from flask import Blueprint, jsonify, request
 
 executor_bp = Blueprint('executor', __name__)
@@ -18,7 +20,8 @@ def execute_code():
     """Execute code in the specified language"""
     data = request.get_json()
     code = data.get('code', '')
-    language = data.get('language', '').lower()
+    language = data.get('language', 'python')
+    filename = data.get('filename', '')
     
     if not code:
         return jsonify({'success': False, 'error': 'No code provided'}), 400
@@ -32,13 +35,14 @@ def execute_code():
         success = False
         
         if language == 'python':
-            file_path = os.path.join(temp_dir, 'script.py')
+            fname = filename if filename and filename.endswith('.py') else 'script.py'
+            file_path = os.path.join(temp_dir, fname)
             with open(file_path, 'w') as f:
                 f.write(code)
             
-            # Execute Python
+            # Execute Python using the current interpreter
             result = subprocess.run(
-                ['python', file_path],
+                [sys.executable, file_path],
                 cwd=temp_dir,
                 capture_output=True,
                 text=True,
@@ -49,7 +53,8 @@ def execute_code():
             success = result.returncode == 0
             
         elif language == 'javascript' or language == 'js':
-            file_path = os.path.join(temp_dir, 'script.js')
+            fname = filename if filename and filename.endswith('.js') else 'script.js'
+            file_path = os.path.join(temp_dir, fname)
             with open(file_path, 'w') as f:
                 f.write(code)
             
@@ -59,26 +64,46 @@ def execute_code():
                 cwd=temp_dir,
                 capture_output=True,
                 text=True,
-                timeout=30,
-                shell=True # Needed for windows node path sometimes
+                timeout=30
+                # shell=True removed as it breaks list args on Windows
             )
             output = result.stdout
             error = result.stderr
             success = result.returncode == 0
             
         elif language == 'java':
-            file_path = os.path.join(temp_dir, 'Main.java')
+            if filename:
+                fname = filename
+                if not fname.endswith('.java'):
+                    fname += '.java'
+            else:
+                fname = 'Main.java'
+
+            # Check for package declaration
+            package_match = re.search(r'^\s*package\s+([a-zA-Z0-9_.]+)\s*;', code, re.MULTILINE)
+            package_name = package_match.group(1) if package_match else None
+
+            class_name = os.path.splitext(fname)[0]
+            if package_name:
+                full_class_name = f"{package_name}.{class_name}"
+            else:
+                full_class_name = class_name
+
+            file_path = os.path.join(temp_dir, fname)
+            
             with open(file_path, 'w') as f:
                 f.write(code)
             
             # Compile Java
+            # -d . directs javac to create package directory structure in temp_dir
+            compile_cmd = ['javac', '-d', '.', fname]
+            
             compile_result = subprocess.run(
-                ['javac', 'Main.java'],
+                compile_cmd,
                 cwd=temp_dir,
                 capture_output=True,
                 text=True,
-                timeout=30,
-                shell=True
+                timeout=30
             )
             
             if compile_result.returncode != 0:
@@ -88,12 +113,11 @@ def execute_code():
             else:
                 # Run Java
                 run_result = subprocess.run(
-                    ['java', 'Main'],
+                    ['java', full_class_name],
                     cwd=temp_dir,
                     capture_output=True,
                     text=True,
-                    timeout=30,
-                    shell=True
+                    timeout=30
                 )
                 output = run_result.stdout
                 error = run_result.stderr

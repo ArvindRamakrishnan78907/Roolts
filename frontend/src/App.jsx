@@ -43,7 +43,10 @@ import {
     FiChevronDown,
     FiChevronUp,
     FiBookmark,
-    FiMapPin
+    FiMapPin,
+    FiLayout,
+    FiMic,
+    FiGrid
 } from 'react-icons/fi';
 import {
     useUIStore,
@@ -65,15 +68,25 @@ import { terminalService } from './services/terminalService';
 import WebPreview from './components/WebPreview';
 import ReviewPanel from './components/ReviewPanel';
 import SnippetPanel from './components/SnippetPanel';
+import AppsPanel from './components/AppsPanel';
 import PortfolioGenerator from './components/PortfolioGenerator';
 import DeploymentModal from './components/DeploymentModal';
 import { useVoiceCommands } from './hooks/useVoiceCommands';
-import { FiMic, FiMicOff, FiLayout } from 'react-icons/fi';
+import SyncManager from './components/SyncManager';
 
 // File Explorer Component
 function FileExplorer() {
-    const { files, activeFileId, openFile } = useFileStore();
+    const { files, activeFileId, openFile, deleteFile, renameFile } = useFileStore();
     const { openModal } = useUIStore();
+    const [renamingId, setRenamingId] = useState(null);
+    const [contextMenu, setContextMenu] = useState(null);
+
+    // Close context menu on global click
+    useEffect(() => {
+        const handleClick = () => setContextMenu(null);
+        window.addEventListener('click', handleClick);
+        return () => window.removeEventListener('click', handleClick);
+    }, []);
 
     const getFileIcon = (language) => {
         const icons = {
@@ -88,8 +101,25 @@ function FileExplorer() {
         return icons[language] || icons.default;
     };
 
+    const handleRename = (fileId, newName) => {
+        if (newName && newName.trim() !== '') {
+            renameFile(fileId, newName);
+        }
+        setRenamingId(null);
+    };
+
+    const handleContextMenu = (e, fileId) => {
+        e.preventDefault();
+        e.stopPropagation();
+        setContextMenu({
+            x: e.clientX,
+            y: e.clientY,
+            fileId
+        });
+    };
+
     return (
-        <div className="file-explorer">
+        <div className="file-explorer" style={{ position: 'relative' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
                 <span style={{ fontSize: '11px', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
                     Files
@@ -107,14 +137,93 @@ function FileExplorer() {
                     key={file.id}
                     className={`file-item ${activeFileId === file.id ? 'file-item--active' : ''}`}
                     onClick={() => openFile(file.id)}
+                    onContextMenu={(e) => handleContextMenu(e, file.id)}
                 >
                     <span className="file-item__icon">{getFileIcon(file.language)}</span>
-                    <span className="file-item__name">{file.name}</span>
-                    {file.modified && (
-                        <FiCircle size={8} style={{ color: 'var(--warning)', flexShrink: 0 }} />
+
+                    {renamingId === file.id ? (
+                        <input
+                            type="text"
+                            defaultValue={file.name}
+                            className="input"
+                            style={{
+                                padding: '2px 4px',
+                                height: '20px',
+                                fontSize: '13px',
+                                minWidth: 0,
+                                flex: 1
+                            }}
+                            autoFocus
+                            onClick={(e) => e.stopPropagation()}
+                            onBlur={(e) => handleRename(file.id, e.target.value)}
+                            onKeyDown={(e) => {
+                                if (e.key === 'Enter') handleRename(file.id, e.target.currentTarget.value);
+                                if (e.key === 'Escape') setRenamingId(null);
+                            }}
+                        />
+                    ) : (
+                        <span className="file-item__name" style={{ flex: 1 }}>{file.name}</span>
                     )}
+
+                    {file.modified && (
+                        <FiCircle size={8} style={{ color: 'var(--warning)', flexShrink: 0, marginRight: '8px' }} />
+                    )}
+
+                    <button
+                        className="btn btn--ghost btn--icon"
+                        style={{ padding: '4px', opacity: 0.6, width: '24px', height: '24px' }}
+                        onClick={(e) => {
+                            e.stopPropagation();
+                            deleteFile(file.id);
+                        }}
+                        title="Delete File"
+                    >
+                        <FiX size={12} />
+                    </button>
                 </div>
             ))}
+
+            {/* Context Menu */}
+            {contextMenu && (
+                <div
+                    style={{
+                        position: 'fixed',
+                        top: contextMenu.y,
+                        left: contextMenu.x,
+                        zIndex: 1000,
+                        backgroundColor: 'var(--bg-secondary)',
+                        border: '1px solid var(--border-primary)',
+                        borderRadius: '4px',
+                        boxShadow: '0 4px 6px rgba(0, 0, 0, 0.3)',
+                        padding: '4px 0',
+                        minWidth: '120px'
+                    }}
+                    onClick={(e) => e.stopPropagation()}
+                >
+                    <button
+                        style={{
+                            display: 'flex',
+                            alignItems: 'center',
+                            width: '100%',
+                            padding: '6px 12px',
+                            border: 'none',
+                            background: 'transparent',
+                            color: 'var(--text-primary)',
+                            cursor: 'pointer',
+                            fontSize: '13px',
+                            textAlign: 'left'
+                        }}
+                        className="context-menu-item"
+                        onClick={() => {
+                            setRenamingId(contextMenu.fileId);
+                            setContextMenu(null);
+                        }}
+                    >
+                        <FiEdit3 size={14} style={{ marginRight: '8px' }} />
+                        Rename
+                    </button>
+                </div>
+            )}
         </div>
     );
 }
@@ -1493,7 +1602,7 @@ function RightPanel({ style, editorMinimized }) {
         { id: 'notes', label: 'Notes', icon: <FiFileText /> },
         { id: 'learn', label: 'Learn', icon: <FiBookOpen /> },
         { id: 'review', label: 'Review', icon: <FiCheckCircle /> },
-        { id: 'snippets', label: 'Snippets', icon: <FiCode /> }
+        { id: 'apps', label: 'Apps', icon: <FiGrid /> }
     ];
 
     // Calculate style - when editor is minimized and panel is expanded, limit max width
@@ -1535,7 +1644,7 @@ function RightPanel({ style, editorMinimized }) {
             {rightPanelTab === 'notes' && <NoteEditorPanel />}
             {rightPanelTab === 'learn' && <LearningPanel />}
             {rightPanelTab === 'review' && <ReviewPanel />}
-            {rightPanelTab === 'snippets' && <SnippetPanel />}
+            {rightPanelTab === 'apps' && <AppsPanel />}
         </div>
     );
 }
@@ -2327,17 +2436,20 @@ function App() {
         setExecuting(true);
         setOutput('');
         setError(null);
+        addNotification({ type: 'info', message: 'Starting execution...' });
 
         const startTime = Date.now();
 
         try {
-            const result = await executorService.execute(activeFile.content, activeFile.language);
+            const result = await executorService.execute(activeFile.content, activeFile.language, activeFile.name);
             const executionTime = Date.now() - startTime;
             setExecutionTime(executionTime);
             setShowOutput(true);
 
             if (result.success) {
-                const outputStr = typeof result.output === 'string' ? result.output : JSON.stringify(result.output || 'Code executed successfully (no output)', null, 2);
+                const outputStr = (typeof result.output === 'string' && result.output.length > 0)
+                    ? result.output
+                    : (result.output || 'Code executed successfully (no output)');
                 setOutput(outputStr);
                 addToHistory({
                     success: true,
@@ -2577,6 +2689,9 @@ function App() {
             <SettingsModal />
             <PortfolioGeneratorModal />
             <DeploymentModalComponent />
+
+            {/* Data Sychronization */}
+            <SyncManager />
 
             {/* Notifications */}
             <Notifications />

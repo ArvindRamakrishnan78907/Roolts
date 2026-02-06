@@ -6,9 +6,10 @@
 
 import axios from 'axios';
 
-// Use relative path - Vite will proxy to the executor service
+// Use environment variable if available, otherwise relative (proxy)
 const executorApi = axios.create({
-    baseURL: '/api/executor',
+    // DIRECT CONNECTION (Bypassing Proxy for Debugging)
+    baseURL: 'http://127.0.0.1:5000/api/executor',
     timeout: 60000, // 60 seconds for code execution
     headers: {
         'Content-Type': 'application/json'
@@ -57,7 +58,9 @@ export const executorService = {
      * Execute Java code
      */
     executeJava: async (code, className = 'Main') => {
-        const response = await executorApi.post('/execute', { code, language: 'java' });
+        // If className ends with .java, use it as filename, else assume it's class name
+        const filename = className.endsWith('.java') ? className : `${className}.java`;
+        const response = await executorApi.post('/execute', { code, language: 'java', filename });
         return response.data;
     },
 
@@ -72,9 +75,9 @@ export const executorService = {
     /**
      * Execute code with specified language
      */
-    execute: async (code, language) => {
+    execute: async (code, language, filename) => {
         try {
-            const response = await executorApi.post('/execute', { code, language });
+            const response = await executorApi.post('/execute', { code, language, filename });
             return response.data;
         } catch (error) {
             return {
