@@ -1,6 +1,5 @@
 # Roolts - Advanced AI-Powered Code Editor and Portfolio Enhancement Application
 
-
 <p align="center">
   <img src="frontend/public/favicon.svg" alt="Roolts Logo" width="80" height="80">
 </p>
@@ -21,31 +20,37 @@
 </p>
 
 ---
+
 This application is currently in development
 
 ## ✨ Features
 
 ### 🤖 Multi-AI Hub
+
 - **Smart AI Router** - Automatically selects the best AI for your task
 - **4 AI Providers** - Gemini, Claude, DeepSeek, Qwen
 - **Real-time Suggestions** - AI-powered suggestions as you type
 
 ### 💻 Xcode-like Code Editor
+
 - **Monaco Editor** - Same editor as VS Code
 - **Multi-language Support** - Python, Java, JavaScript
 - **Live Execution** - Run code and see results instantly
 
 ### 📱 Social Publishing
+
 - **Direct Posting** - Post to Twitter/X and LinkedIn
 - **AI Suggestions** - Get AI-generated post ideas
 - **OAuth Integration** - Secure account connection
 
 ### 📚 Learning Hub
+
 - **Visual Explanations** - Code explanations with diagrams
 - **Interactive Q&A** - Ask coding questions
 - **Resource Suggestions** - Get relevant tutorials
 
 ### 🔐 User Authentication
+
 - **Secure Login** - JWT-based authentication
 - **Profile Management** - Customize your portfolio
 - **API Key Storage** - Store your AI API keys securely
@@ -54,13 +59,13 @@ This application is currently in development
 
 ## 🛠 Tech Stack
 
-| Layer | Technology |
-|-------|------------|
+| Layer        | Technology                             |
+| ------------ | -------------------------------------- |
 | **Frontend** | React 18, Monaco Editor, Zustand, Vite |
-| **Backend** | Python Flask, SQLAlchemy, JWT |
-| **Executor** | Java Spring Boot |
-| **AI** | Gemini, Claude, DeepSeek, Qwen APIs |
-| **Social** | Twitter API v2, LinkedIn API |
+| **Backend**  | Python Flask, SQLAlchemy, JWT          |
+| **Executor** | Java Spring Boot                       |
+| **AI**       | Gemini, Claude, DeepSeek, Qwen APIs    |
+| **Social**   | Twitter API v2, LinkedIn API           |
 
 ---
 
@@ -76,12 +81,14 @@ This application is currently in development
 ### Installation
 
 1. **Clone the repository**
+
    ```bash
    git clone https://github.com/yourusername/roolts.git
    cd roolts
    ```
 
 2. **Set up the Frontend**
+
    ```bash
    cd frontend
    npm install
@@ -89,15 +96,16 @@ This application is currently in development
    ```
 
 3. **Set up the Backend**
+
    ```bash
    cd backend
    python -m venv venv
-   
+
    # Windows:
    .\venv\Scripts\activate
    # macOS/Linux:
    source venv/bin/activate
-   
+
    pip install -r requirements.txt
    cp .env.example .env
    # Edit .env with your API keys
@@ -178,37 +186,41 @@ roolts/
 ## 📡 API Reference
 
 ### Authentication
-| Method | Endpoint | Description |
-|--------|----------|-------------|
-| POST | `/api/auth/register` | Create new account |
-| POST | `/api/auth/login` | Login & get JWT |
-| GET | `/api/auth/me` | Get current user |
-| PUT | `/api/auth/profile` | Update profile |
-| PUT | `/api/auth/api-keys` | Save AI API keys |
-| GET | `/api/auth/twitter/connect` | Start Twitter OAuth |
-| GET | `/api/auth/linkedin/connect` | Start LinkedIn OAuth |
+
+| Method | Endpoint                     | Description          |
+| ------ | ---------------------------- | -------------------- |
+| POST   | `/api/auth/register`         | Create new account   |
+| POST   | `/api/auth/login`            | Login & get JWT      |
+| GET    | `/api/auth/me`               | Get current user     |
+| PUT    | `/api/auth/profile`          | Update profile       |
+| PUT    | `/api/auth/api-keys`         | Save AI API keys     |
+| GET    | `/api/auth/twitter/connect`  | Start Twitter OAuth  |
+| GET    | `/api/auth/linkedin/connect` | Start LinkedIn OAuth |
 
 ### AI Hub
-| Method | Endpoint | Description |
-|--------|----------|-------------|
-| GET | `/api/ai-hub/models` | List available AI models |
-| POST | `/api/ai-hub/chat` | Send message (auto/manual model) |
-| POST | `/api/ai-hub/suggest` | Get typing suggestions |
-| POST | `/api/ai-hub/analyze-prompt` | Analyze best model for prompt |
+
+| Method | Endpoint                     | Description                      |
+| ------ | ---------------------------- | -------------------------------- |
+| GET    | `/api/ai-hub/models`         | List available AI models         |
+| POST   | `/api/ai-hub/chat`           | Send message (auto/manual model) |
+| POST   | `/api/ai-hub/suggest`        | Get typing suggestions           |
+| POST   | `/api/ai-hub/analyze-prompt` | Analyze best model for prompt    |
 
 ### Code Execution
-| Method | Endpoint | Description |
-|--------|----------|-------------|
-| POST | `/api/execute/python` | Run Python code |
-| POST | `/api/execute/java` | Run Java code |
-| POST | `/api/execute/javascript` | Run JavaScript code |
-| GET | `/api/execute/languages` | List supported languages |
+
+| Method | Endpoint                  | Description              |
+| ------ | ------------------------- | ------------------------ |
+| POST   | `/api/execute/python`     | Run Python code          |
+| POST   | `/api/execute/java`       | Run Java code            |
+| POST   | `/api/execute/javascript` | Run JavaScript code      |
+| GET    | `/api/execute/languages`  | List supported languages |
 
 ### Social Media
-| Method | Endpoint | Description |
-|--------|----------|-------------|
-| POST | `/api/social/twitter/post` | Post to Twitter |
-| POST | `/api/social/linkedin/post` | Post to LinkedIn |
+
+| Method | Endpoint                    | Description      |
+| ------ | --------------------------- | ---------------- |
+| POST   | `/api/social/twitter/post`  | Post to Twitter  |
+| POST   | `/api/social/linkedin/post` | Post to LinkedIn |
 
 ---
 
@@ -232,12 +244,12 @@ cd java-service && ./gradlew bootRun
 
 The smart router selects the best AI based on:
 
-| Task Type | Best Model | Why |
-|-----------|------------|-----|
-| **Coding** | DeepSeek | Optimized for code generation |
-| **Writing** | Claude | Nuanced, creative text |
-| **Research** | Gemini | Factual, up-to-date info |
-| **Multilingual** | Qwen | Excellent non-English support |
+| Task Type        | Best Model | Why                           |
+| ---------------- | ---------- | ----------------------------- |
+| **Coding**       | DeepSeek   | Optimized for code generation |
+| **Writing**      | Claude     | Nuanced, creative text        |
+| **Research**     | Gemini     | Factual, up-to-date info      |
+| **Multilingual** | Qwen       | Excellent non-English support |
 
 ---
 
@@ -248,5 +260,5 @@ MIT License - see [LICENSE](LICENSE) for details.
 ---
 
 <p align="center">
-  Made with ❤️ for developers who want to build, learn, and share
+  Made with ❤️ for developers who want to build, learn, and share.
 </p>
