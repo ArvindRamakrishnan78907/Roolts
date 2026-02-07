@@ -46,6 +46,7 @@ import {
     FiMapPin,
     FiLayout,
     FiMic,
+    FiMicOff,
     FiGrid
 } from 'react-icons/fi';
 import ReactMarkdown from 'react-markdown';
