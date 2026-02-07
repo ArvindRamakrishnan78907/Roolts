@@ -85,3 +85,23 @@ def setup_compiler():
             except:
                 pass
         return None
+
+def get_gcc_path():
+    """Returns the absolute path to the gcc executable."""
+    # Check portable compiler first
+    portable_gcc = COMPILER_BIN / "gcc.exe"
+    if portable_gcc.exists():
+        return str(portable_gcc.absolute())
+    
+    # Fallback to system gcc
+    return "gcc"
+
+def get_gplusplus_path():
+    """Returns the absolute path to the g++ executable."""
+    # Check portable compiler first
+    portable_gpp = COMPILER_BIN / "g++.exe"
+    if portable_gpp.exists():
+        return str(portable_gpp.absolute())
+    
+    # Fallback to system g++
+    return "g++"

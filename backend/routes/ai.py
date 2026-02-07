@@ -477,24 +477,50 @@ def chat_with_ai():
         "If the user asks for changes, explain why they are beneficial."
     )
     
+    # Build structured messages
+    messages = []
+    
+    # SYSTEM PROMPT
+    # We pass this as the separate system_prompt argument where possible, 
+    # but some providers like OpenAI/DeepSeek treat it as the first message with role 'system'.
+    # `service.chat` handles `system_prompt` argument correctly for each provider.
+    
+    # Add Context Code to System Prompt
     if code:
         system_prompt += f"\n\nContext Code ({language}):\n```{language}\n{code}\n```"
+        system_prompt += "\n\nRefer to the code above when answering the user's questions."
+
+    # HISTORY
+    # Convert frontend history format {role, content} to backend format
+    # Frontend sends: [{role: 'user'|'assistant', content: '...'}, ...]
+    if history:
+         for msg in history:
+             role = msg.get('role', 'user')
+             # Map 'assistant' to provider specific if needed, but 'assistant' is standard for OAI/Claude/DeepSeek
+             messages.append({'role': role, 'content': msg.get('content', '')})
     
-    # Format history for the prompt
-    history_context = ""
-    for msg in history[-5:]: # Keep last 5 messages for context
-        role = "User" if msg.get('role') == 'user' else "AI"
-        history_context += f"{role}: {msg.get('content')}\n"
+    # CURRENT USER QUERY
+    messages.append({'role': 'user', 'content': query})
     
-    full_prompt = f"{history_context}User: {query}\nAI:"
+    # We pass system_prompt separately, and messages list.
+    # We still pass 'query' as 'prompt' for the auto-selector logic (it needs a string to analyze).
     
-    result = service.chat(full_prompt, model='deepseek', system_prompt=system_prompt)
+    result = service.chat(
+        prompt=query, 
+        model='deepseek', # Defaulting to deepseek for code chat as per original code
+        system_prompt=system_prompt,
+        messages=messages
+    )
     
     if 'error' in result:
-        return jsonify({'error': result['error']}), 500
-        
+        return jsonify({
+            'response': f"> [!CAUTION]\n> **AI Error**: {result['error']}\n\nPlease check your API keys in Settings or try again later.",
+            'model': 'error',
+            'provider': 'System'
+        })
+    
     return jsonify({
         'response': result.get('response', ''),
-        'provider': result.get('provider'),
-        'model': result.get('model')
+        'model': result.get('model', 'unknown'),
+        'provider': result.get('provider', 'unknown')
     })

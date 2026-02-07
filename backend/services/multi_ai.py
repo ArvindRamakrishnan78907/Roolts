@@ -15,8 +15,16 @@ class AIProvider(ABC):
     """Abstract base class for AI providers."""
     
     @abstractmethod
-    def generate(self, prompt: str, system_prompt: str = None) -> Dict[str, Any]:
-        """Generate a response from the AI model."""
+    def generate(self, prompt: str, system_prompt: str = None, messages: list = None) -> Dict[str, Any]:
+        """
+        Generate a response from the AI model.
+        
+        Args:
+            prompt: Single text prompt (legacy/simple mode)
+            system_prompt: Optional system instructions
+            messages: List of conversation messages [{'role': 'user', 'content': '...'}, ...]
+                     If provided, this takes precedence over 'prompt' for chat history.
+        """
         pass
     
     @abstractmethod
@@ -36,25 +44,59 @@ class GeminiProvider(AIProvider):
     def is_configured(self) -> bool:
         return bool(self.api_key)
     
-    def generate(self, prompt: str, system_prompt: str = None) -> Dict[str, Any]:
+    def generate(self, prompt: str, system_prompt: str = None, messages: list = None) -> Dict[str, Any]:
         if not self.is_configured():
             return {'error': 'Gemini API key not configured'}
         
         url = f"{self.base_url}/models/{self.model}:generateContent?key={self.api_key}"
         
         contents = []
+        
+        # System prompt handling
         if system_prompt:
-            contents.append({
-                'role': 'user',
-                'parts': [{'text': f"System: {system_prompt}"}]
-            })
-        contents.append({
-            'role': 'user',
-            'parts': [{'text': prompt}]
-        })
+             # Gemini 1.5/2.0 supports system instructions via separate field, 
+             # but for compatibility with older endpoints or simple structure we can prepend or use specific fields.
+             # Ideally validation of model version is needed.
+             # For 'generateContent', system instructions are passed differently or prepended.
+             # Let's try prepending for broad compatibility or check API spec.
+             # Actually Gemini Pro (1.0) didn't support system instructions easily, Flash 1.5+ does.
+             # We'll use the 'system_instruction' field if creating a new formatted request, 
+             # but to keep it simple and robust with the existing requests approach:
+             pass 
+
+        # Build contents from messages or prompt
+        if messages:
+            for msg in messages:
+                role = 'user' if msg['role'] == 'user' else 'model'
+                # Map 'system' role if present in messages to system instruction or prepend
+                if msg['role'] == 'system':
+                    continue # specific handling below
+                contents.append({
+                    'role': role,
+                    'parts': [{'text': msg['content']}]
+                })
+        else:
+             # Legacy single prompt
+             contents.append({
+                 'role': 'user',
+                 'parts': [{'text': prompt}]
+             })
+             
+        payload = {'contents': contents}
+        
+        # Add system instruction if supported/provided
+        if system_prompt:
+            payload['systemInstruction'] = {
+                'parts': [{'text': system_prompt}]
+            }
+        # Also check for system message in messages list
+        elif messages and len(messages) > 0 and messages[0]['role'] == 'system':
+             payload['systemInstruction'] = {
+                'parts': [{'text': messages[0]['content']}]
+            }
         
         try:
-            response = requests.post(url, json={'contents': contents})
+            response = requests.post(url, json=payload)
             data = response.json()
             
             if 'candidates' in data and data['candidates']:
@@ -84,7 +126,7 @@ class ClaudeProvider(AIProvider):
     def is_configured(self) -> bool:
         return bool(self.api_key)
     
-    def generate(self, prompt: str, system_prompt: str = None) -> Dict[str, Any]:
+    def generate(self, prompt: str, system_prompt: str = None, messages: list = None) -> Dict[str, Any]:
         if not self.is_configured():
             return {'error': 'Claude API key not configured'}
         
@@ -94,10 +136,20 @@ class ClaudeProvider(AIProvider):
             'content-type': 'application/json'
         }
         
+        api_messages = []
+        if messages:
+            for msg in messages:
+                if msg['role'] == 'system':
+                     if not system_prompt: system_prompt = msg['content']
+                     continue
+                api_messages.append({'role': msg['role'], 'content': msg['content']})
+        else:
+            api_messages.append({'role': 'user', 'content': prompt})
+
         data = {
             'model': self.model,
             'max_tokens': 4096,
-            'messages': [{'role': 'user', 'content': prompt}]
+            'messages': api_messages
         }
         
         if system_prompt:
@@ -135,7 +187,7 @@ class DeepSeekProvider(AIProvider):
     def is_configured(self) -> bool:
         return bool(self.api_key)
     
-    def generate(self, prompt: str, system_prompt: str = None) -> Dict[str, Any]:
+    def generate(self, prompt: str, system_prompt: str = None, messages: list = None) -> Dict[str, Any]:
         if not self.is_configured():
             return {'error': 'DeepSeek API key not configured'}
         
@@ -144,14 +196,27 @@ class DeepSeekProvider(AIProvider):
             'Content-Type': 'application/json'
         }
         
-        messages = []
+        api_messages = []
+        
+        # System prompt
         if system_prompt:
-            messages.append({'role': 'system', 'content': system_prompt})
-        messages.append({'role': 'user', 'content': prompt})
+            api_messages.append({'role': 'system', 'content': system_prompt})
+            
+        # User messages
+        if messages:
+            # If messages list has a system prompt at start, duplicate logic might occur if both provided
+            # We assume caller handles it, but generally we append.
+            for msg in messages:
+                 # Avoid double system prompt if one was passed as arg vs in list
+                 if msg['role'] == 'system' and system_prompt:
+                     continue
+                 api_messages.append(msg)
+        else:
+            api_messages.append({'role': 'user', 'content': prompt})
         
         data = {
             'model': self.model,
-            'messages': messages,
+            'messages': api_messages,
             'max_tokens': 4096
         }
         
@@ -187,7 +252,7 @@ class QwenProvider(AIProvider):
     def is_configured(self) -> bool:
         return bool(self.api_key)
     
-    def generate(self, prompt: str, system_prompt: str = None) -> Dict[str, Any]:
+    def generate(self, prompt: str, system_prompt: str = None, messages: list = None) -> Dict[str, Any]:
         if not self.is_configured():
             return {'error': 'Qwen API key not configured'}
         
@@ -196,15 +261,21 @@ class QwenProvider(AIProvider):
             'Content-Type': 'application/json'
         }
         
-        messages = []
+        api_messages = []
         if system_prompt:
-            messages.append({'role': 'system', 'content': system_prompt})
-        messages.append({'role': 'user', 'content': prompt})
+            api_messages.append({'role': 'system', 'content': system_prompt})
+            
+        if messages:
+            for msg in messages:
+                if msg['role'] == 'system' and system_prompt: continue
+                api_messages.append(msg)
+        else:
+            api_messages.append({'role': 'user', 'content': prompt})
         
         data = {
             'model': self.model,
             'input': {
-                'messages': messages
+                'messages': api_messages
             }
         }
         
@@ -433,21 +504,23 @@ class MultiAIService:
         self, 
         prompt: str, 
         model: str = 'auto',
-        system_prompt: str = None
+        system_prompt: str = None,
+        messages: list = None
     ) -> Dict[str, Any]:
         """
         Send a prompt to an AI model.
         
         Args:
-            prompt: The user's prompt
+            prompt: The user's prompt (used if messages is None)
             model: Model to use ('auto', 'gemini', 'claude', 'deepseek', 'qwen')
             system_prompt: Optional system instructions
+            messages: List of conversation messages
             
         Returns:
             Dict with response, model used, and any errors
         """
-        if not prompt:
-            return {'error': 'Prompt is required'}
+        if not prompt and (not messages or len(messages) == 0):
+            return {'error': 'Prompt or messages required'}
         
         # Auto-select model if not specified
         if model == 'auto':
@@ -474,7 +547,7 @@ class MultiAIService:
             provider = self.providers[model]
         
         # Generate response
-        result = provider.generate(prompt, system_prompt)
+        result = provider.generate(prompt, system_prompt, messages)
         
         # Add metadata
         if 'error' not in result:

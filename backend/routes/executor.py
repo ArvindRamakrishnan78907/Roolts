@@ -13,6 +13,8 @@ import sys
 import re
 from flask import Blueprint, jsonify, request
 
+from utils.compiler_manager import get_gcc_path, get_gplusplus_path
+
 executor_bp = Blueprint('executor', __name__)
 
 @executor_bp.route('/execute', methods=['POST'])
@@ -136,8 +138,9 @@ def execute_code():
             with open(file_path, 'w', encoding='utf-8') as f:
                 f.write(code)
             
-            # Compile C
-            compile_cmd = ['gcc', file_path, '-o', exe_path]
+            # Compile C using absolute path
+            gcc_path = get_gcc_path()
+            compile_cmd = [gcc_path, file_path, '-o', exe_path]
             
             compile_result = subprocess.run(
                 compile_cmd,
@@ -175,8 +178,9 @@ def execute_code():
             with open(file_path, 'w', encoding='utf-8') as f:
                 f.write(code)
             
-            # Compile C++
-            compile_cmd = ['g++', file_path, '-o', exe_path]
+            # Compile C++ using absolute path
+            gpp_path = get_gplusplus_path()
+            compile_cmd = [gpp_path, file_path, '-o', exe_path]
             
             compile_result = subprocess.run(
                 compile_cmd,
@@ -204,26 +208,6 @@ def execute_code():
                 error = run_result.stderr
                 success = run_result.returncode == 0
 
-        elif language == 'go':
-            fname = filename if filename and filename.endswith('.go') else 'main.go'
-            file_path = os.path.join(temp_dir, fname)
-            
-            with open(file_path, 'w', encoding='utf-8') as f:
-                f.write(code)
-            
-            # Run Go directly
-            run_result = subprocess.run(
-                ['go', 'run', file_path],
-                cwd=temp_dir,
-                capture_output=True,
-                text=True,
-                input=stdin_input,
-                timeout=60
-            )
-            output = run_result.stdout
-            error = run_result.stderr
-            success = run_result.returncode == 0
-                
         else:
             return jsonify({'success': False, 'error': f'Unsupported language: {language}'}), 400
 
@@ -261,6 +245,5 @@ def get_languages():
         {'id': 'javascript', 'name': 'JavaScript', 'version': 'Node.js'},
         {'id': 'java', 'name': 'Java', 'version': 'OpenJDK'},
         {'id': 'c', 'name': 'C', 'version': 'GCC'},
-        {'id': 'cpp', 'name': 'C++', 'version': 'G++'},
-        {'id': 'go', 'name': 'Go', 'version': 'Go'}
+        {'id': 'cpp', 'name': 'C++', 'version': 'G++'}
     ])

@@ -48,6 +48,9 @@ import {
     FiMic,
     FiGrid
 } from 'react-icons/fi';
+import ReactMarkdown from 'react-markdown';
+import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter';
+import { vscDarkPlus } from 'react-syntax-highlighter/dist/esm/styles/prism';
 import { SiC, SiCplusplus } from 'react-icons/si';
 import {
     useUIStore,
@@ -103,7 +106,6 @@ function FileExplorer() {
             json: '📋',
             c: <span style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', width: '20px' }}><SiC color="#A8B9CC" size={14} /></span>,
             cpp: <span style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', width: '20px' }}><SiCplusplus color="#00599C" size={14} /></span>,
-            go: 'Go',
             default: '📄'
         };
         return icons[language] || icons.default;
@@ -557,8 +559,7 @@ function CodeEditor() {
         json: 'json',
         plaintext: 'plaintext',
         c: 'c',
-        cpp: 'cpp',
-        go: 'go'
+        cpp: 'cpp'
     };
 
     const { theme, format, features, backgroundImage, backgroundOpacity } = useSettingsStore();
@@ -1598,14 +1599,56 @@ function LearningPanel() {
                                 <div className="learning-card__content">
                                     {explanation ? (
                                         <div className="explanation-markdown">
-                                            {explanation}
+                                            <ReactMarkdown
+                                                components={{
+                                                    code({ node, inline, className, children, ...props }) {
+                                                        const match = /language-(\w+)/.exec(className || '')
+                                                        return !inline && match ? (
+                                                            <SyntaxHighlighter
+                                                                {...props}
+                                                                children={String(children).replace(/\n$/, '')}
+                                                                style={vscDarkPlus}
+                                                                language={match[1]}
+                                                                PreTag="div"
+                                                            />
+                                                        ) : (
+                                                            <code {...props} className={className}>
+                                                                {children}
+                                                            </code>
+                                                        )
+                                                    }
+                                                }}
+                                            >
+                                                {explanation}
+                                            </ReactMarkdown>
 
                                             {/* Chat History */}
                                             {chatMessages.length > 0 && (
                                                 <div className="learning-chat">
                                                     {chatMessages.map((msg, idx) => (
                                                         <div key={idx} className={`chat-message chat-message--${msg.role}`}>
-                                                            {msg.content}
+                                                            <ReactMarkdown
+                                                                components={{
+                                                                    code({ node, inline, className, children, ...props }) {
+                                                                        const match = /language-(\w+)/.exec(className || '')
+                                                                        return !inline && match ? (
+                                                                            <SyntaxHighlighter
+                                                                                {...props}
+                                                                                children={String(children).replace(/\n$/, '')}
+                                                                                style={vscDarkPlus}
+                                                                                language={match[1]}
+                                                                                PreTag="div"
+                                                                            />
+                                                                        ) : (
+                                                                            <code {...props} className={className}>
+                                                                                {children}
+                                                                            </code>
+                                                                        )
+                                                                    }
+                                                                }}
+                                                            >
+                                                                {msg.content}
+                                                            </ReactMarkdown>
                                                         </div>
                                                     ))}
                                                     {isChatting && (
