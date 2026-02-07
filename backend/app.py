@@ -29,6 +29,7 @@ from routes.snippets import snippets_bp
 from routes.portfolio import portfolio_bp
 from routes.deployment import deployment_bp
 from routes.executor import executor_bp
+from routes.virtual_env import virtual_env_bp
 
 
 def create_app():
@@ -66,6 +67,7 @@ def create_app():
     app.register_blueprint(portfolio_bp, url_prefix='/api/portfolio')  # Portfolio Generator
     app.register_blueprint(deployment_bp, url_prefix='/api/deployment')  # Deployment
     app.register_blueprint(executor_bp, url_prefix='/api/executor')  # Code Execution
+    app.register_blueprint(virtual_env_bp, url_prefix='/api/virtual-env')  # Virtual Environments
     
     # Health check endpoint
     @app.route('/api/health')
@@ -79,7 +81,8 @@ def create_app():
                 'multi_ai': True,
                 'social_publishing': True,
                 'code_execution': True,
-                'learning': True
+                'learning': True,
+                'virtual_environments': True
             }
         })
     
