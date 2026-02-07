@@ -410,12 +410,14 @@ export const useExecutionStore = create((set) => ({
         javascript: { available: null, version: null }
     },
     showOutput: false,
+    input: '',
 
     setExecuting: (isExecuting) => set({ isExecuting }),
     setOutput: (output) => set({ output, showOutput: true }),
     setError: (error) => set({ error }),
     setExecutionTime: (executionTime) => set({ executionTime }),
     setShowOutput: (showOutput) => set({ showOutput }),
+    setInput: (input) => set({ input }),
 
     setCompilerStatus: (language, status) => set((state) => ({
         compilers: {

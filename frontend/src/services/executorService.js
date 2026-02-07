@@ -50,8 +50,8 @@ export const executorService = {
     /**
      * Execute Python code
      */
-    executePython: async (code) => {
-        const response = await executorApi.post('/execute', { code, language: 'python' });
+    executePython: async (code, input = '') => {
+        const response = await executorApi.post('/execute', { code, language: 'python', input });
         return response.data;
     },
 
@@ -61,24 +61,24 @@ export const executorService = {
     executeJava: async (code, className = 'Main') => {
         // If className ends with .java, use it as filename, else assume it's class name
         const filename = className.endsWith('.java') ? className : `${className}.java`;
-        const response = await executorApi.post('/execute', { code, language: 'java', filename });
+        const response = await executorApi.post('/execute', { code, language: 'java', filename, input });
         return response.data;
     },
 
     /**
      * Execute JavaScript code (Node.js)
      */
-    executeJavaScript: async (code) => {
-        const response = await executorApi.post('/execute', { code, language: 'javascript' });
+    executeJavaScript: async (code, input = '') => {
+        const response = await executorApi.post('/execute', { code, language: 'javascript', input });
         return response.data;
     },
 
     /**
      * Execute code with specified language
      */
-    execute: async (code, language, filename) => {
+    execute: async (code, language, filename, input = '') => {
         try {
-            const response = await executorApi.post('/execute', { code, language, filename });
+            const response = await executorApi.post('/execute', { code, language, filename, input });
             return response.data;
         } catch (error) {
             return {
@@ -98,7 +98,10 @@ export const executorService = {
         const patterns = {
             python: [/\bdef\s+\w+\s*\(/, /\bimport\s+\w+/, /print\s*\(/],
             java: [/\bpublic\s+class\s+/, /\bpublic\s+static\s+void\s+main/],
-            javascript: [/\bfunction\s+\w+\s*\(/, /\bconst\s+\w+\s*=/, /=>/]
+            javascript: [/\bfunction\s+\w+\s*\(/, /\bconst\s+\w+\s*=/, /=>/],
+            c: [/#include\s+<stdio\.h>/, /\bint\s+main\s*\(/],
+            cpp: [/#include\s+<iostream>/, /\busing\s+namespace\s+std;/, /\bstd::cout/],
+            go: [/\bpackage\s+main/, /\bimport\s+"fmt"/, /\bfunc\s+main\s*\(/]
         };
 
         for (const [lang, langPatterns] of Object.entries(patterns)) {
@@ -120,7 +123,10 @@ export const executorService = {
             python: '🐍',
             java: '☕',
             javascript: '📜',
-            js: '📜'
+            js: '📜',
+            c: 'C',
+            cpp: 'C++',
+            go: 'Go'
         };
         return icons[language.toLowerCase()] || '📄';
     }

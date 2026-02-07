@@ -22,6 +22,7 @@ def execute_code():
     code = data.get('code', '')
     language = data.get('language', 'python')
     filename = data.get('filename', '')
+    stdin_input = data.get('input', '')
     
     if not code:
         return jsonify({'success': False, 'error': 'No code provided'}), 400
@@ -47,6 +48,7 @@ def execute_code():
                 cwd=temp_dir,
                 capture_output=True,
                 text=True,
+                input=stdin_input,
                 timeout=60
             )
             output = result.stdout
@@ -65,6 +67,7 @@ def execute_code():
                 cwd=temp_dir,
                 capture_output=True,
                 text=True,
+                input=stdin_input,
                 timeout=60
             )
             output = result.stdout
@@ -116,11 +119,110 @@ def execute_code():
                     cwd=temp_dir,
                     capture_output=True,
                     text=True,
+                    input=stdin_input,
                     timeout=60
                 )
                 output = run_result.stdout
                 error = run_result.stderr
                 success = run_result.returncode == 0
+                
+        elif language == 'c':
+            fname = filename if filename and filename.endswith('.c') else 'main.c'
+            file_path = os.path.join(temp_dir, fname)
+            exe_path = os.path.join(temp_dir, 'program')
+            if os.name == 'nt':
+                exe_path += '.exe'
+                
+            with open(file_path, 'w', encoding='utf-8') as f:
+                f.write(code)
+            
+            # Compile C
+            compile_cmd = ['gcc', file_path, '-o', exe_path]
+            
+            compile_result = subprocess.run(
+                compile_cmd,
+                cwd=temp_dir,
+                capture_output=True,
+                text=True,
+                timeout=60
+            )
+            
+            if compile_result.returncode != 0:
+                output = compile_result.stdout
+                error = "Compilation Error:\n" + compile_result.stderr
+                success = False
+            else:
+                # Run C Executable
+                run_result = subprocess.run(
+                    [exe_path],
+                    cwd=temp_dir,
+                    capture_output=True,
+                    text=True,
+                    input=stdin_input,
+                    timeout=60
+                )
+                output = run_result.stdout
+                error = run_result.stderr
+                success = run_result.returncode == 0
+
+        elif language == 'cpp' or language == 'c++':
+            fname = filename if filename and filename.endswith('.cpp') else 'main.cpp'
+            file_path = os.path.join(temp_dir, fname)
+            exe_path = os.path.join(temp_dir, 'program')
+            if os.name == 'nt':
+                exe_path += '.exe'
+                
+            with open(file_path, 'w', encoding='utf-8') as f:
+                f.write(code)
+            
+            # Compile C++
+            compile_cmd = ['g++', file_path, '-o', exe_path]
+            
+            compile_result = subprocess.run(
+                compile_cmd,
+                cwd=temp_dir,
+                capture_output=True,
+                text=True,
+                timeout=60
+            )
+            
+            if compile_result.returncode != 0:
+                output = compile_result.stdout
+                error = "Compilation Error:\n" + compile_result.stderr
+                success = False
+            else:
+                # Run C++ Executable
+                run_result = subprocess.run(
+                    [exe_path],
+                    cwd=temp_dir,
+                    capture_output=True,
+                    text=True,
+                    input=stdin_input,
+                    timeout=60
+                )
+                output = run_result.stdout
+                error = run_result.stderr
+                success = run_result.returncode == 0
+
+        elif language == 'go':
+            fname = filename if filename and filename.endswith('.go') else 'main.go'
+            file_path = os.path.join(temp_dir, fname)
+            
+            with open(file_path, 'w', encoding='utf-8') as f:
+                f.write(code)
+            
+            # Run Go directly
+            run_result = subprocess.run(
+                ['go', 'run', file_path],
+                cwd=temp_dir,
+                capture_output=True,
+                text=True,
+                input=stdin_input,
+                timeout=60
+            )
+            output = run_result.stdout
+            error = run_result.stderr
+            success = run_result.returncode == 0
                 
         else:
             return jsonify({'success': False, 'error': f'Unsupported language: {language}'}), 400
@@ -157,5 +259,8 @@ def get_languages():
     return jsonify([
         {'id': 'python', 'name': 'Python', 'version': '3.x'},
         {'id': 'javascript', 'name': 'JavaScript', 'version': 'Node.js'},
-        {'id': 'java', 'name': 'Java', 'version': 'OpenJDK'}
+        {'id': 'java', 'name': 'Java', 'version': 'OpenJDK'},
+        {'id': 'c', 'name': 'C', 'version': 'GCC'},
+        {'id': 'cpp', 'name': 'C++', 'version': 'G++'},
+        {'id': 'go', 'name': 'Go', 'version': 'Go'}
     ])

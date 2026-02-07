@@ -14,6 +14,9 @@ load_dotenv()
 # Import database models
 from models import db, init_db
 
+# Import compiler setup
+from utils.compiler_manager import setup_compiler
+
 # Import routes
 from routes.files import files_bp
 from routes.github import github_bp
@@ -31,6 +34,15 @@ from routes.executor import executor_bp
 def create_app():
     """Create and configure the Flask application."""
     app = Flask(__name__)
+    
+    # Setup portable compiler if needed
+    try:
+        compiler_path = setup_compiler()
+        if compiler_path:
+            os.environ["PATH"] += os.pathsep + compiler_path
+            print(f"Added portable compiler to PATH: {compiler_path}")
+    except Exception as e:
+        print(f"Warning: Failed to setup portable compiler: {e}")
     
     # Configuration
     app.config['SECRET_KEY'] = os.getenv('SECRET_KEY', 'dev-secret-key-change-in-production')

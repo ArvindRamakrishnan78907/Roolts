@@ -48,6 +48,7 @@ import {
     FiMic,
     FiGrid
 } from 'react-icons/fi';
+import { SiC, SiCplusplus } from 'react-icons/si';
 import {
     useUIStore,
     useFileStore,
@@ -96,6 +97,13 @@ function FileExplorer() {
             html: '🌐',
             css: '🎨',
             json: '📋',
+            c: 'C',
+            html: '🌐',
+            css: '🎨',
+            json: '📋',
+            c: <span style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', width: '20px' }}><SiC color="#A8B9CC" size={14} /></span>,
+            cpp: <span style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', width: '20px' }}><SiCplusplus color="#00599C" size={14} /></span>,
+            go: 'Go',
             default: '📄'
         };
         return icons[language] || icons.default;
@@ -428,7 +436,7 @@ function EditorTabs() {
 
 // Code Execution Output Panel
 function OutputPanel() {
-    const { output, error, executionTime, isExecuting, clearOutput, history, setShowOutput } = useExecutionStore();
+    const { output, error, executionTime, isExecuting, clearOutput, history, setShowOutput, input, setInput } = useExecutionStore();
     const [showHistory, setShowHistory] = useState(false);
 
     return (
@@ -547,7 +555,10 @@ function CodeEditor() {
         html: 'html',
         css: 'css',
         json: 'json',
-        plaintext: 'plaintext'
+        plaintext: 'plaintext',
+        c: 'c',
+        cpp: 'cpp',
+        go: 'go'
     };
 
     const { theme, format, features, backgroundImage, backgroundOpacity } = useSettingsStore();
@@ -1709,7 +1720,6 @@ function RightPanel({ style, editorMinimized }) {
         { id: 'preview', label: 'Preview', icon: <FiEye /> },
         { id: 'github', label: 'GitHub', icon: <FiGithub /> },
         { id: 'social', label: 'Social', icon: <FiShare2 /> },
-        { id: 'notes', label: 'Notes', icon: <FiFileText /> },
         { id: 'learn', label: 'Learn', icon: <FiBookOpen /> },
         { id: 'review', label: 'Review', icon: <FiCheckCircle /> },
         { id: 'apps', label: 'Apps', icon: <FiGrid /> }
@@ -1751,7 +1761,6 @@ function RightPanel({ style, editorMinimized }) {
             {rightPanelTab === 'preview' && <WebPreview files={files} activeFileId={activeFileId} />}
             {rightPanelTab === 'github' && <GitHubPanel />}
             {rightPanelTab === 'social' && <SocialPanel />}
-            {rightPanelTab === 'notes' && <NoteEditorPanel />}
             {rightPanelTab === 'learn' && <LearningPanel />}
             {rightPanelTab === 'review' && <ReviewPanel />}
             {rightPanelTab === 'apps' && <AppsPanel />}
@@ -1773,6 +1782,8 @@ function NewFileModal() {
     const extensionMap = {
         'js': 'javascript',
         'jsx': 'javascript',
+        'ts': 'javascript',
+        'tsx': 'javascript',
         'py': 'python',
         'java': 'java',
         'html': 'html',
@@ -1780,7 +1791,12 @@ function NewFileModal() {
         'css': 'css',
         'json': 'json',
         'txt': 'plaintext',
-        'md': 'plaintext'
+        'md': 'plaintext',
+        'c': 'c',
+        'cpp': 'cpp',
+        'cc': 'cpp',
+        'cxx': 'cpp',
+        'go': 'go'
     };
 
     const handleFileNameChange = (e) => {
@@ -1798,6 +1814,12 @@ function NewFileModal() {
     const handleLanguageChange = (e) => {
         setLanguage(e.target.value);
         setIsManualSelection(true);
+    };
+
+    const handleKeyDown = (e) => {
+        if (e.key === 'Enter') {
+            handleCreate();
+        }
     };
 
     const handleCreate = () => {
@@ -1827,6 +1849,7 @@ function NewFileModal() {
                         placeholder="e.g., app.js, main.py"
                         value={fileName}
                         onChange={handleFileNameChange}
+                        onKeyDown={handleKeyDown}
                         style={{ marginBottom: '16px' }}
                         autoFocus
                     />
@@ -1844,6 +1867,9 @@ function NewFileModal() {
                         <option value="css">CSS</option>
                         <option value="json">JSON</option>
                         <option value="plaintext">Plain Text</option>
+                        <option value="c">C</option>
+                        <option value="cpp">C++</option>
+                        <option value="go">Go</option>
                     </select>
                 </div>
                 <div className="modal__footer">
@@ -2447,7 +2473,8 @@ function App() {
         const startTime = Date.now();
 
         try {
-            const result = await executorService.execute(activeFile.content, activeFile.language, activeFile.name);
+            const { input } = useExecutionStore.getState();
+            const result = await executorService.execute(activeFile.content, activeFile.language, activeFile.name, input);
             const executionTime = Date.now() - startTime;
             setExecutionTime(executionTime);
             setShowOutput(true);

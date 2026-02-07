@@ -8,6 +8,8 @@ RUN apt-get update && apt-get install -y \
     openjdk-17-jre-headless \
     nodejs \
     npm \
+    build-essential \
+    golang-go \
     && rm -rf /var/lib/apt/lists/*
 
 # Set the working directory
