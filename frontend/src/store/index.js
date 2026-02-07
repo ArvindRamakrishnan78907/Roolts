@@ -522,3 +522,80 @@ export const useSnippetStore = create((set) => ({
         snippets: state.snippets.filter(s => s.id !== id)
     }))
 }));
+
+// Virtual Environment Store - manages containerized development environments
+export const useVirtualEnvStore = create(
+    persist(
+        (set, get) => ({
+            environments: [],
+            activeEnvId: null,
+            isLoading: false,
+            error: null,
+            useVirtualEnv: false, // Toggle for using virtual env vs local execution
+
+            // Environment management
+            setEnvironments: (environments) => set({ environments }),
+            setActiveEnv: (envId) => set({ activeEnvId: envId }),
+            setLoading: (isLoading) => set({ isLoading }),
+            setError: (error) => set({ error }),
+            setUseVirtualEnv: (use) => set({ useVirtualEnv: use }),
+
+            addEnvironment: (environment) => set((state) => ({
+                environments: [environment, ...state.environments],
+                activeEnvId: environment.id
+            })),
+
+            updateEnvironment: (envId, updates) => set((state) => ({
+                environments: state.environments.map((env) =>
+                    env.id === envId ? { ...env, ...updates } : env
+                )
+            })),
+
+            removeEnvironment: (envId) => set((state) => {
+                const newEnvs = state.environments.filter((env) => env.id !== envId);
+                return {
+                    environments: newEnvs,
+                    activeEnvId: state.activeEnvId === envId
+                        ? (newEnvs[0]?.id || null)
+                        : state.activeEnvId
+                };
+            }),
+
+            getActiveEnvironment: () => {
+                const state = get();
+                return state.environments.find((env) => env.id === state.activeEnvId);
+            },
+
+            // Quick actions
+            toggleEnvironmentStatus: async (envId, currentStatus) => {
+                // This will be called from UI components
+                set({ isLoading: true });
+                try {
+                    // Status will be updated by the component calling the API
+                    return true;
+                } catch (error) {
+                    set({ error: error.message });
+                    return false;
+                } finally {
+                    set({ isLoading: false });
+                }
+            },
+
+            reset: () => set({
+                environments: [],
+                activeEnvId: null,
+                isLoading: false,
+                error: null,
+                useVirtualEnv: false
+            })
+        }),
+        {
+            name: 'roolts-virtualenv-storage',
+            partialize: (state) => ({
+                environments: state.environments,
+                activeEnvId: state.activeEnvId,
+                useVirtualEnv: state.useVirtualEnv
+            })
+        }
+    )
+);

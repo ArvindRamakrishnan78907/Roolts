@@ -149,8 +149,19 @@ class FileManager:
             if not is_valid:
                 return False, message
             
+            
             # Encode content to base64 to safely pass through shell
             content_b64 = base64.b64encode(content_bytes).decode('ascii')
+            
+            # Create parent directory if it doesn't exist
+            dir_path = os.path.dirname(file_path)
+            if dir_path and dir_path != '/':
+                mkdir_command = f'mkdir -p "{dir_path}" 2>&1'
+                self.docker_manager.execute_command(
+                    container_id,
+                    mkdir_command,
+                    timeout=10
+                )
             
             # Write file using base64 decoding
             operator = '>>' if append else '>'

@@ -16,8 +16,30 @@ const terminalApi = axios.create({
 export const terminalService = {
     /**
      * Execute a command in the terminal
+     * Automatically uses virtual environment if available, otherwise uses local terminal
      */
     execute: async (command, sessionId = 'default') => {
+        try {
+            // Try virtual environment execution first
+            const { default: backgroundEnvManager } = await import('./backgroundEnvManager.js');
+
+            if (backgroundEnvManager.isVirtualEnvAvailable()) {
+                console.log('[Terminal] Executing in virtual environment:', command);
+                const result = await backgroundEnvManager.executeCommand(command, 30);
+
+                return {
+                    success: result.exit_code === 0,
+                    output: result.stdout || result.stderr || '',
+                    error: result.exit_code !== 0 ? (result.stderr || 'Command failed') : '',
+                    cwd: '/workspace',
+                    exit_code: result.exit_code
+                };
+            }
+        } catch (error) {
+            console.log('[Terminal] Virtual environment not available, using local terminal:', error.message);
+        }
+
+        // Fallback to local terminal API
         try {
             const response = await terminalApi.post('/execute', {
                 command,

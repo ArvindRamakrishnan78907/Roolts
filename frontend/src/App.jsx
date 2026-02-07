@@ -63,13 +63,15 @@ import {
     useNotesStore,
     useTerminalStore,
     useSettingsStore,
-    useSnippetStore
+    useSnippetStore,
+    useVirtualEnvStore
 } from './store';
 import { authService } from './services/authService';
 import { socialService, githubService, aiService } from './services/api';
 import { notesService } from './services/notesService';
 import { executorService } from './services/executorService';
 import { terminalService } from './services/terminalService';
+import backgroundEnvManager from './services/backgroundEnvManager';
 import WebPreview from './components/WebPreview';
 import ReviewPanel from './components/ReviewPanel';
 import SnippetPanel from './components/SnippetPanel';
@@ -98,10 +100,6 @@ function FileExplorer() {
             python: '🐍',
             javascript: '📜',
             java: '☕',
-            html: '🌐',
-            css: '🎨',
-            json: '📋',
-            c: 'C',
             html: '🌐',
             css: '🎨',
             json: '📋',
@@ -2479,6 +2477,18 @@ function App() {
         handleSocialCallbacks();
     }, []);
 
+    // Initialize background virtual environment
+    React.useEffect(() => {
+        const initBackgroundEnv = async () => {
+            try {
+                await backgroundEnvManager.initialize();
+            } catch (error) {
+                console.error('Failed to initialize background environment:', error);
+            }
+        };
+        initBackgroundEnv();
+    }, []);
+
     const handleSave = () => {
         addNotification({ type: 'success', message: 'File saved successfully!' });
         if (activeFileId) {
@@ -2518,7 +2528,13 @@ function App() {
 
         try {
             const { input } = useExecutionStore.getState();
-            const result = await executorService.execute(activeFile.content, activeFile.language, activeFile.name, input);
+
+            const result = await executorService.execute(
+                activeFile.content,
+                activeFile.language,
+                activeFile.name,
+                input
+            );
             const executionTime = Date.now() - startTime;
             setExecutionTime(executionTime);
             setShowOutput(true);
