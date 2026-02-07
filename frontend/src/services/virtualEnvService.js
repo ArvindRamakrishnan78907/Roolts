@@ -1,10 +1,9 @@
 import axios from 'axios';
 
-const VIRTUAL_ENV_API_URL = import.meta.env.VITE_VIRTUAL_ENV_API_URL
-    ? `${import.meta.env.VITE_VIRTUAL_ENV_API_URL}/api/virtual-env`
-    : '/api/virtual-env';
+const VIRTUAL_ENV_API_URL = import.meta.env.VITE_VIRTUAL_ENV_API_URL || '/api/virtual-env';
 
 // Create axios instance for virtual environment API
+console.log('[VirtualEnvApi] Base URL:', VIRTUAL_ENV_API_URL);
 const virtualEnvApi = axios.create({
     baseURL: VIRTUAL_ENV_API_URL,
     timeout: 60000,
@@ -168,7 +167,7 @@ export const virtualEnvService = {
      * @returns {Promise<Object>} File content
      */
     async readFile(envId, filePath) {
-        return virtualEnvApi.get(`/environments/${envId}/files/${filePath}`);
+        return virtualEnvApi.get(`/environments/${envId}/files/${encodeURIComponent(filePath)}`);
     },
 
     /**
@@ -180,7 +179,7 @@ export const virtualEnvService = {
      * @returns {Promise<Object>} Success message
      */
     async writeFile(envId, filePath, content, append = false) {
-        return virtualEnvApi.put(`/environments/${envId}/files/${filePath}`, {
+        return virtualEnvApi.put(`/environments/${envId}/files/${encodeURIComponent(filePath)}`, {
             content,
             append
         });
@@ -194,19 +193,41 @@ export const virtualEnvService = {
      * @returns {Promise<Object>} Success message
      */
     async deleteFile(envId, filePath, recursive = false) {
-        return virtualEnvApi.delete(`/environments/${envId}/files/${filePath}`, {
+        return virtualEnvApi.delete(`/environments/${envId}/files/${encodeURIComponent(filePath)}`, {
             params: { recursive }
         });
     },
 
     /**
-     * Create a directory
+     * Create a new file or directory
+     * @param {number} envId - Environment ID
+     * @param {string} path - File/Directory path
+     * @param {string} type - 'file' or 'directory'
+     * @returns {Promise<Object>} Created item details
+     */
+    async createFile(envId, path, type = 'file') {
+        return virtualEnvApi.post(`/environments/${envId}/files/create`, { path, type });
+    },
+
+    /**
+     * Rename a file or directory
+     * @param {number} envId - Environment ID
+     * @param {string} oldPath - Current path
+     * @param {string} newPath - New path
+     * @returns {Promise<Object>} Success message
+     */
+    async renameFile(envId, oldPath, newPath) {
+        return virtualEnvApi.post(`/environments/${envId}/files/rename`, { oldPath, newPath });
+    },
+
+    /**
+     * Create a directory (Legacy wrapper, use createFile instead)
      * @param {number} envId - Environment ID
      * @param {string} path - Directory path
      * @returns {Promise<Object>} Success message
      */
     async createDirectory(envId, path) {
-        return virtualEnvApi.post(`/environments/${envId}/mkdir`, { path });
+        return this.createFile(envId, path, 'directory');
     },
 
     // ========== Helper Methods ==========

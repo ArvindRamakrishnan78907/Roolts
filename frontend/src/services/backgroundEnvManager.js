@@ -61,6 +61,17 @@ class BackgroundEnvManager {
     }
 
     /**
+     * Re-check environment availability
+     * Useful if backend was offline during startup
+     */
+    async recheckAvailability() {
+        this.isInitialized = false;
+        this.isAvailable = false;
+        await this.initialize();
+        return this.isVirtualEnvAvailable();
+    }
+
+    /**
      * Get the default environment ID
      * @returns {number|null} Environment ID or null if not available
      */

@@ -90,19 +90,17 @@ export const executorService = {
             if (backgroundEnvManager.isVirtualEnvAvailable()) {
                 console.log('[Executor] Using virtual environment');
                 return await executorService.executeInVirtualEnv(code, language, filename, input);
+            } else {
+                return {
+                    success: false,
+                    error: 'Virtual environment not available. Execution is strictly limited to Docker environment.',
+                    output: ''
+                };
             }
-        } catch (error) {
-            console.log('[Executor] Virtual environment not available, using local execution:', error.message);
-        }
-
-        // Fallback to local execution
-        try {
-            const response = await executorApi.post('/execute', { code, language, filename, input });
-            return response.data;
         } catch (error) {
             return {
                 success: false,
-                error: error.response?.data?.error || error.message,
+                error: `Execution failed: ${error.message}`,
                 output: ''
             };
         }

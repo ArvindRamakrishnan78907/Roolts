@@ -5,47 +5,9 @@ import { persist } from 'zustand/middleware';
 export const useFileStore = create(
     persist(
         (set, get) => ({
-            files: [
-                {
-                    id: '1',
-                    name: 'main.py',
-                    path: '/main.py',
-                    content: `# Welcome to Roolts!
-# Start coding here...
-
-def hello_world():
-    """A simple hello world function"""
-    print("Hello from Roolts!")
-    return True
-
-if __name__ == "__main__":
-    hello_world()
-`,
-                    language: 'python',
-                    modified: false
-                },
-                {
-                    id: '2',
-                    name: 'App.js',
-                    path: '/src/App.js',
-                    content: `import React from 'react';
-
-function App() {
-  return (
-    <div className="App">
-      <h1>Hello, Roolts!</h1>
-    </div>
-  );
-}
-
-export default App;
-`,
-                    language: 'javascript',
-                    modified: false
-                }
-            ],
-            activeFileId: '1',
-            openFiles: ['1'],
+            files: [],
+            activeFileId: null,
+            openFiles: [],
 
             // Actions
             setActiveFile: (fileId) => set({ activeFileId: fileId }),
@@ -112,6 +74,96 @@ export default App;
                         : file
                 )
             })),
+
+            syncFromContainer: (containerFiles) => set((state) => {
+                if (!containerFiles || containerFiles.length === 0) return state;
+
+                const containerMap = new Map(containerFiles.map(f => [f.path, f]));
+                const newFiles = [];
+                let hasChanges = false;
+
+                // Process all existing files
+                state.files.forEach(existingFile => {
+                    if (containerMap.has(existingFile.path)) {
+                        const containerFile = containerMap.get(existingFile.path);
+
+                        // Check if file changed in container (different size or newer/different modified time)
+                        // Note: String comparison of ISO dates works for equality
+                        const isModified = containerFile.modified !== existingFile.lastSyncedDate;
+
+                        // If file is outdated, mark it so we can refresh content
+                        // Only mark outdated if we don't have local unsaved changes
+                        const outdated = isModified && !existingFile.modified;
+
+                        if (outdated || existingFile.outdated !== outdated || String(existingFile.size) !== String(containerFile.size)) {
+                            hasChanges = true;
+                        }
+
+                        newFiles.push({
+                            ...existingFile,
+                            // Update metadata if changed
+                            size: containerFile.size,
+                            lastSyncedDate: containerFile.modified, // Track version
+                            outdated: outdated,
+                            synced: true
+                        });
+
+                        // Remove from map so we know what's left (new files)
+                        containerMap.delete(existingFile.path);
+                    } else if (existingFile.synced) {
+                        // File was synced but is no longer in container.
+                        // STRICT MODE: Backend is source of truth.
+                        // If it's gone from backend, it's gone from frontend.
+                        // We skip adding it to newFiles, effectively deleting it.
+                        hasChanges = true;
+                    } else {
+                        // Local-only file (not synced yet)
+                        // In strict mode, these shouldn't exist for long, but we keep them until they are pushed or user deletes them.
+                        newFiles.push(existingFile);
+                    }
+                });
+
+                // Add remaining new files from container
+                containerMap.forEach(containerFile => {
+                    newFiles.push({
+                        ...containerFile,
+                        lastSyncedDate: containerFile.modified
+                    });
+                    hasChanges = true;
+                });
+
+                if (!hasChanges) {
+                    return state;
+                }
+
+                console.log('[FileStore] Synced files. Updated count:', newFiles.length);
+                return { files: newFiles };
+            }),
+
+            fetchFileContent: async (fileId, force = false) => {
+                const state = get();
+                const file = state.files.find(f => f.id === fileId);
+
+                if (file && file.synced && (force || !file.content || file.content === '')) {
+                    try {
+                        const { default: fileSyncService } = await import('../services/fileSyncService');
+                        const content = await fileSyncService.pullFile(file.path);
+
+                        if (content !== null) {
+                            set((state) => ({
+                                files: state.files.map(f =>
+                                    f.id === fileId
+                                        ? { ...f, content: content || '', loaded: true, outdated: false, lastSyncedDate: f.modified }
+                                        : f
+                                )
+                            }));
+                            console.log('[FileStore] Loaded content for:', file.name);
+                        }
+                    } catch (error) {
+                        console.error('[FileStore] Failed to load content:', error);
+                    }
+                }
+            },
 
             getActiveFile: () => {
                 const state = get();
