@@ -1,12 +1,20 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { FiGrid, FiActivity, FiCpu, FiMessageSquare, FiMusic, FiPackage, FiSettings, FiCamera, FiChrome, FiMap, FiPhone, FiMail } from 'react-icons/fi';
+import CallingPanel from './CallingPanel';
 
 const AppsPanel = () => {
+    const [activeAppId, setActiveAppId] = useState(null);
+
     // Android-style app configuration
     const apps = [
         { id: 'notes', name: 'Notes', icon: <FiMessageSquare />, color: '#f1c40f' },
         { id: 'calc', name: 'Calc', icon: <FiActivity />, color: '#e74c3c' },
+        { id: 'calls', name: 'Calls', icon: <FiPhone />, color: '#2ecc71' },
     ];
+
+    if (activeAppId === 'calls') {
+        return <CallingPanel onBack={() => setActiveAppId(null)} />;
+    }
 
     return (
         <div className="panel-content" style={{ padding: '20px' }}>
@@ -24,13 +32,15 @@ const AppsPanel = () => {
                 justifyContent: 'center'
             }}>
                 {apps.map(app => (
-                    <div key={app.id} style={{
-                        display: 'flex',
-                        flexDirection: 'column',
-                        alignItems: 'center',
-                        cursor: 'pointer',
-                        transition: 'transform 0.1s'
-                    }}
+                    <div key={app.id}
+                        style={{
+                            display: 'flex',
+                            flexDirection: 'column',
+                            alignItems: 'center',
+                            cursor: 'pointer',
+                            transition: 'transform 0.1s'
+                        }}
+                        onClick={() => setActiveAppId(app.id)}
                         onMouseEnter={(e) => e.currentTarget.style.transform = 'scale(1.05)'}
                         onMouseLeave={(e) => e.currentTarget.style.transform = 'scale(1)'}
                     >
