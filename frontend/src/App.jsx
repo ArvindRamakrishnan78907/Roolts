@@ -80,6 +80,7 @@ import AppsPanel from './components/AppsPanel';
 import PortfolioGenerator from './components/PortfolioGenerator';
 import DeploymentModal from './components/DeploymentModal';
 import { useVoiceCommands } from './hooks/useVoiceCommands';
+import { useAutoSave } from './hooks/useAutoSave';
 import SyncManager from './components/SyncManager';
 
 // File Explorer Component
@@ -661,6 +662,9 @@ function CodeEditor() {
 
     // IMPORTANT: All hooks must be called before any early returns
     const { theme, format, features, backgroundImage, backgroundOpacity } = useSettingsStore();
+
+    // Enable auto-save to Docker container
+    useAutoSave();
 
     if (!activeFile) {
         return (
