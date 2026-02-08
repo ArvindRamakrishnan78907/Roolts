@@ -38,7 +38,4 @@ coverage/
 *.jar
 .gradle/
 build/
-
-
-# anas-solution
-/anas-solution
+node_modules_trash/

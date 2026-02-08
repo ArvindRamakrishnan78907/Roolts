@@ -1,12 +1,5 @@
 import axios from 'axios';
 
-// ============================================
-// DEVELOPMENT CONFIGURATION
-// ============================================
-// Default user ID for development/testing
-// TODO: Replace with proper authentication system in production
-const DEV_USER_ID = '1';
-
 const API_BASE_URL = import.meta.env.VITE_API_URL
     ? `${import.meta.env.VITE_API_URL}/api`
     : '/api';
@@ -22,10 +15,6 @@ const api = axios.create({
 
 // Request interceptor for adding auth tokens
 api.interceptors.request.use((config) => {
-    // Add default user ID for development
-    // In production, this should come from authenticated session
-    config.headers['X-User-ID'] = DEV_USER_ID;
-
     const githubToken = localStorage.getItem('github_token');
     const linkedinToken = localStorage.getItem('linkedin_token');
 

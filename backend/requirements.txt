@@ -35,7 +35,3 @@ pyyaml>=6.0.0
 # Production Server
 gunicorn>=21.2.0
 
-# Virtual Environment Support
-docker>=7.0.0
-psutil>=5.9.0
-
