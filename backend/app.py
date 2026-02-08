@@ -18,17 +18,16 @@ from models import db, init_db
 from utils.compiler_manager import setup_compiler
 
 # Import routes
-from routes.files import files_bp
 from routes.github import github_bp
 from routes.social import social_bp
 from routes.ai import ai_bp
 from routes.auth import auth_bp
 from routes.ai_hub import ai_hub_bp
-from routes.terminal import terminal_bp
 from routes.snippets import snippets_bp
 from routes.portfolio import portfolio_bp
 from routes.deployment import deployment_bp
-from routes.executor import executor_bp
+from routes.virtual_env import virtual_env_bp
+from routes.terminal import terminal_bp
 
 
 def create_app():
@@ -57,15 +56,14 @@ def create_app():
     # Register blueprints
     app.register_blueprint(auth_bp, url_prefix='/api/auth')      # Authentication
     app.register_blueprint(ai_hub_bp, url_prefix='/api/ai-hub')  # Multi-AI Chat
-    app.register_blueprint(files_bp, url_prefix='/api/files')    # File management
     app.register_blueprint(github_bp, url_prefix='/api/github')  # GitHub integration
     app.register_blueprint(social_bp, url_prefix='/api/social')  # Social posting
     app.register_blueprint(ai_bp, url_prefix='/api/ai')          # AI learning features
-    app.register_blueprint(terminal_bp, url_prefix='/api/terminal')  # Terminal
     app.register_blueprint(snippets_bp, url_prefix='/api/snippets')  # Snippets
     app.register_blueprint(portfolio_bp, url_prefix='/api/portfolio')  # Portfolio Generator
     app.register_blueprint(deployment_bp, url_prefix='/api/deployment')  # Deployment
-    app.register_blueprint(executor_bp, url_prefix='/api/executor')  # Code Execution
+    app.register_blueprint(virtual_env_bp, url_prefix='/api/virtual-env')  # Virtual Environments (Docker-Only Execution)
+    app.register_blueprint(terminal_bp, url_prefix='/api/terminal')  # Terminal Interface
     
     # Health check endpoint
     @app.route('/api/health')
@@ -79,7 +77,8 @@ def create_app():
                 'multi_ai': True,
                 'social_publishing': True,
                 'code_execution': True,
-                'learning': True
+                'learning': True,
+                'virtual_environments': True
             }
         })
     

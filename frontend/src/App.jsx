@@ -63,13 +63,16 @@ import {
     useNotesStore,
     useTerminalStore,
     useSettingsStore,
-    useSnippetStore
+    useSnippetStore,
+    useVirtualEnvStore
 } from './store';
 import { authService } from './services/authService';
 import { socialService, githubService, aiService } from './services/api';
 import { notesService } from './services/notesService';
 import { executorService } from './services/executorService';
 import { terminalService } from './services/terminalService';
+import backgroundEnvManager from './services/backgroundEnvManager';
+import fileSyncService from './services/fileSyncService';
 import WebPreview from './components/WebPreview';
 import ReviewPanel from './components/ReviewPanel';
 import SnippetPanel from './components/SnippetPanel';
@@ -80,6 +83,7 @@ import QuickPythonApp from './components/apps/QuickPythonApp';
 import PortfolioGenerator from './components/PortfolioGenerator';
 import DeploymentModal from './components/DeploymentModal';
 import { useVoiceCommands } from './hooks/useVoiceCommands';
+import { useAutoSave } from './hooks/useAutoSave';
 import SyncManager from './components/SyncManager';
 
 // File Explorer Component
@@ -104,10 +108,6 @@ function FileExplorer() {
             html: '🌐',
             css: '🎨',
             json: '📋',
-            c: 'C',
-            html: '🌐',
-            css: '🎨',
-            json: '📋',
             c: <span style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', width: '20px' }}><SiC color="#A8B9CC" size={14} /></span>,
             cpp: <span style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', width: '20px' }}><SiCplusplus color="#00599C" size={14} /></span>,
             default: '📄'
@@ -115,11 +115,56 @@ function FileExplorer() {
         return icons[language] || icons.default;
     };
 
-    const handleRename = (fileId, newName) => {
+    const handleRename = async (fileId, newName) => {
         if (newName && newName.trim() !== '') {
-            renameFile(fileId, newName);
+            const file = files.find(f => f.id === fileId);
+            if (file) {
+                try {
+                    // STRICT MODE: Rename in container ONLY
+                    if (!backgroundEnvManager.isVirtualEnvAvailable()) {
+                        throw new Error('Virtual environment not available. Cannot rename file.');
+                    }
+
+                    const oldPath = file.path;
+                    const parentPath = oldPath.substring(0, oldPath.lastIndexOf('/'));
+                    const newPath = parentPath ? `${parentPath}/${newName}` : `/${newName}`;
+
+                    await fileSyncService.renameFile(oldPath, newPath);
+
+                    // Only update local state if backend success
+                    renameFile(fileId, newName);
+                    addNotification({ type: 'success', message: 'File renamed in Docker' });
+                } catch (error) {
+                    console.error('Failed to rename file:', error);
+                    addNotification({ type: 'error', message: `Failed to rename file: ${error.message}` });
+                    // Revert UI to old name (implicitly done by not calling renameFile)
+                }
+            }
         }
         setRenamingId(null);
+    };
+
+    const handleDelete = async (fileId) => {
+        if (window.confirm('Are you sure you want to delete this file?')) {
+            const file = files.find(f => f.id === fileId);
+            if (file) {
+                try {
+                    // STRICT MODE: Delete from container ONLY
+                    if (!backgroundEnvManager.isVirtualEnvAvailable()) {
+                        throw new Error('Virtual environment not available. Cannot delete file.');
+                    }
+
+                    await fileSyncService.deleteFile(file.path);
+
+                    // Only update local state if backend success
+                    deleteFile(fileId);
+                    addNotification({ type: 'success', message: 'File deleted from Docker' });
+                } catch (error) {
+                    console.error('Failed to delete file:', error);
+                    addNotification({ type: 'error', message: `Failed to delete file: ${error.message}` });
+                }
+            }
+        }
     };
 
     const handleContextMenu = (e, fileId) => {
@@ -138,13 +183,80 @@ function FileExplorer() {
                 <span style={{ fontSize: '11px', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
                     Files
                 </span>
-                <button
-                    className="btn btn--ghost btn--icon"
-                    onClick={() => openModal('newFile')}
-                    title="New File"
-                >
-                    <FiPlus />
-                </button>
+                <div style={{ display: 'flex', gap: '4px' }}>
+                    <button
+                        className="btn btn--ghost btn--icon"
+                        onClick={async () => {
+                            const fileName = prompt('Enter file name (e.g., script.py):');
+                            if (fileName && fileName.trim()) {
+                                try {
+                                    // STRICT MODE: Create in background environment ONLY
+                                    if (!backgroundEnvManager.isVirtualEnvAvailable()) {
+                                        throw new Error('Virtual environment not available. Cannot create file.');
+                                    }
+
+                                    const name = fileName.trim();
+                                    await fileSyncService.createFile(name, 'file');
+                                    // Push empty content to ensure it's synced
+                                    await fileSyncService.pushFile(name, '');
+
+                                    addNotification({ type: 'success', message: `File ${name} created in Docker` });
+
+                                    // Trigger immediate sync to update UI
+                                    const { syncFromContainer } = useFileStore.getState();
+                                    await fileSyncService.syncFiles(syncFromContainer);
+                                } catch (error) {
+                                    console.error('Failed to create file:', error);
+                                    addNotification({ type: 'error', message: `Failed to create file: ${error.message}` });
+                                }
+                            }
+                        }}
+                        title="New File"
+                    >
+                        <FiPlus size={14} />
+                    </button>
+                    <button
+                        className="btn btn--ghost btn--icon"
+                        onClick={async () => {
+                            const folderName = prompt('Enter folder name:');
+                            if (folderName && folderName.trim()) {
+                                try {
+                                    // Use fileSyncService to create folder
+                                    await fileSyncService.createFile(folderName.trim(), 'directory');
+                                    addNotification({ type: 'success', message: `Folder "${folderName}" created` });
+
+                                    // Trigger immediate sync
+                                    const { syncFromContainer } = useFileStore.getState();
+                                    fileSyncService.syncFiles(syncFromContainer);
+                                } catch (error) {
+                                    console.error('Failed to create folder:', error);
+                                    addNotification({ type: 'error', message: 'Failed to create folder' });
+                                }
+                            }
+                        }}
+                        title="New Folder"
+                    >
+                        <FiFolder size={14} />
+                    </button>
+                    <button
+                        className="btn btn--ghost btn--icon"
+                        onClick={async () => {
+                            const { syncFromContainer } = useFileStore.getState();
+
+                            // Try to re-connect if previously failed
+                            if (!backgroundEnvManager.isVirtualEnvAvailable()) {
+                                addNotification({ type: 'info', message: 'Connecting to backend...' });
+                                await backgroundEnvManager.recheckAvailability();
+                            }
+
+                            await fileSyncService.syncFiles(syncFromContainer);
+                            addNotification({ type: 'success', message: 'Files refreshed' });
+                        }}
+                        title="Refresh Files (and Reconnect)"
+                    >
+                        <FiRefreshCw size={14} />
+                    </button>
+                </div>
             </div>
             {files.map((file) => (
                 <div
@@ -188,7 +300,7 @@ function FileExplorer() {
                         style={{ padding: '4px', opacity: 0.6, width: '24px', height: '24px' }}
                         onClick={(e) => {
                             e.stopPropagation();
-                            deleteFile(file.id);
+                            handleDelete(file.id);
                         }}
                         title="Delete File"
                     >
@@ -235,6 +347,28 @@ function FileExplorer() {
                     >
                         <FiEdit3 size={14} style={{ marginRight: '8px' }} />
                         Rename
+                    </button>
+                    <button
+                        style={{
+                            display: 'flex',
+                            alignItems: 'center',
+                            width: '100%',
+                            padding: '6px 12px',
+                            border: 'none',
+                            background: 'transparent',
+                            color: 'var(--error)',
+                            cursor: 'pointer',
+                            fontSize: '13px',
+                            textAlign: 'left'
+                        }}
+                        className="context-menu-item"
+                        onClick={() => {
+                            handleDelete(contextMenu.fileId);
+                            setContextMenu(null);
+                        }}
+                    >
+                        <FiTrash2 size={14} style={{ marginRight: '8px' }} />
+                        Delete
                     </button>
                 </div>
             )}
@@ -529,7 +663,11 @@ function CodeEditor() {
     const activeFile = files.find((f) => f.id === activeFileId);
     // Editor options derived from settings... (implied context, but I will just return the overlay structure)
 
-    // Editor options derived from settings... (implied context, but I will just return the overlay structure)
+    // IMPORTANT: All hooks must be called before any early returns
+    const { theme, format, features, backgroundImage, backgroundOpacity } = useSettingsStore();
+
+    // Enable auto-save to Docker container
+    useAutoSave();
 
     if (!activeFile) {
         return (
@@ -565,8 +703,6 @@ function CodeEditor() {
         c: 'c',
         cpp: 'cpp'
     };
-
-    const { theme, format, features, backgroundImage, backgroundOpacity } = useSettingsStore();
 
     // Map UI theme to Monaco theme defaults to prevent crashes with custom themes
     const getMonacoTheme = (uiTheme) => {
@@ -2015,127 +2151,7 @@ function RightPanel({ style, editorMinimized }) {
     );
 }
 
-// New File Modal
-function NewFileModal() {
-    const { modals, closeModal } = useUIStore();
-    const { addFile } = useFileStore();
-    const [fileName, setFileName] = useState('');
-    const [language, setLanguage] = useState('javascript');
-    const [isManualSelection, setIsManualSelection] = useState(false);
 
-    if (!modals.newFile) return null;
-
-    // Extension to language mapping
-    const extensionMap = {
-        'js': 'javascript',
-        'jsx': 'javascript',
-        'ts': 'javascript',
-        'tsx': 'javascript',
-        'py': 'python',
-        'java': 'java',
-        'html': 'html',
-        'htm': 'html',
-        'css': 'css',
-        'json': 'json',
-        'txt': 'plaintext',
-        'md': 'plaintext',
-        'c': 'c',
-        'cpp': 'cpp',
-        'cc': 'cpp',
-        'cxx': 'cpp',
-        'go': 'go'
-    };
-
-    const handleFileNameChange = (e) => {
-        const value = e.target.value;
-        setFileName(value);
-
-        if (!isManualSelection) {
-            const ext = value.split('.').pop().toLowerCase();
-            if (extensionMap[ext]) {
-                setLanguage(extensionMap[ext]);
-            }
-        }
-    };
-
-    const handleLanguageChange = (e) => {
-        setLanguage(e.target.value);
-        setIsManualSelection(true);
-    };
-
-    const handleKeyDown = (e) => {
-        if (e.key === 'Enter') {
-            handleCreate();
-        }
-    };
-
-    const handleCreate = () => {
-        if (fileName.trim()) {
-            addFile(fileName, '', language);
-            setFileName('');
-            setLanguage('javascript');
-            setIsManualSelection(false);
-            closeModal('newFile');
-        }
-    };
-
-    return (
-        <div className="modal-overlay" onClick={() => closeModal('newFile')}>
-            <div className="modal" onClick={(e) => e.stopPropagation()}>
-                <div className="modal__header">
-                    <h3 className="modal__title">Create New File</h3>
-                    <button className="btn btn--ghost btn--icon" onClick={() => closeModal('newFile')}>
-                        <FiX />
-                    </button>
-                </div>
-                <div className="modal__body">
-                    <label className="label">File Name</label>
-                    <input
-                        type="text"
-                        className="input"
-                        placeholder="e.g., app.js, main.py"
-                        value={fileName}
-                        onChange={handleFileNameChange}
-                        onKeyDown={handleKeyDown}
-                        style={{ marginBottom: '16px' }}
-                        autoFocus
-                    />
-
-                    <label className="label">Language</label>
-                    <select
-                        className="input"
-                        value={language}
-                        onChange={handleLanguageChange}
-                    >
-                        <option value="javascript">JavaScript</option>
-                        <option value="python">Python</option>
-                        <option value="java">Java</option>
-                        <option value="html">HTML</option>
-                        <option value="css">CSS</option>
-                        <option value="json">JSON</option>
-                        <option value="plaintext">Plain Text</option>
-                        <option value="c">C</option>
-                        <option value="cpp">C++</option>
-                        <option value="go">Go</option>
-                    </select>
-                </div>
-                <div className="modal__footer">
-                    <button className="btn btn--secondary" onClick={() => {
-                        setFileName('');
-                        setLanguage('javascript');
-                        setIsManualSelection(false);
-                        closeModal('newFile');
-                    }}>
-                        Cancel
-                    </button>
-                    <button className="btn btn--primary" onClick={handleCreate}>
-                        <FiPlus /> Create File
-                    </button>
-                </div>
-            </div>
-        </div>
-    );
-}
 
 // Portfolio Generator Modal
 function PortfolioGeneratorModal() {
@@ -2208,7 +2224,7 @@ function StatusBar() {
                         <span className="status-bar__item">{activeFile.language}</span>
                         <span className="status-bar__item">UTF-8</span>
                         <span className="status-bar__item">
-                            {activeFile.content.split('\n').length} lines
+                            {(activeFile.content || '').split('\n').length} lines
                         </span>
                     </>
                 )}
@@ -2514,7 +2530,7 @@ function App() {
         sidebarOpen, toggleSidebar, openModal, addNotification, editorMinimized, toggleEditorMinimized,
         rightPanelOpen, toggleRightPanel, setRightPanelTab
     } = useUIStore();
-    const { files, activeFileId, markFileSaved } = useFileStore();
+    const { files, activeFileId, markFileSaved, fetchFileContent } = useFileStore();
     const { isExecuting, setExecuting, setOutput, setError, setExecutionTime, addToHistory, setShowOutput } = useExecutionStore();
     const { setConnected, setRepositories, isConnected } = useGitHubStore();
     const [terminalOpen, setTerminalOpen] = useState(false);
@@ -2526,6 +2542,15 @@ function App() {
     const mainRef = React.useRef(null);
 
     const activeFile = files.find(f => f.id === activeFileId);
+
+    // Auto-refresh active file if outdated
+    useEffect(() => {
+        if (activeFile && activeFile.outdated && !activeFile.modified) {
+            console.log('[App] Active file outdated, refreshing...', activeFile.name);
+            fetchFileContent(activeFile.id, true);
+            addNotification({ type: 'info', message: `Updated ${activeFile.name} from container` });
+        }
+    }, [activeFile, fetchFileContent, addNotification]);
 
     // Settings
     const { theme, backgroundImage, backgroundOpacity, uiFontSize, uiFontFamily } = useSettingsStore();
@@ -2682,10 +2707,63 @@ function App() {
         handleSocialCallbacks();
     }, []);
 
-    const handleSave = React.useCallback(() => {
-        addNotification({ type: 'success', message: 'File saved successfully!' });
+    // Initialize background virtual environment
+    React.useEffect(() => {
+        const initBackgroundEnv = async () => {
+            try {
+                await backgroundEnvManager.initialize();
+
+                // Start file sync after environment is ready
+                if (backgroundEnvManager.isVirtualEnvAvailable()) {
+                    const { syncFromContainer } = useFileStore.getState();
+
+                    // Sync immediately on startup
+                    fileSyncService.syncFiles(syncFromContainer);
+
+                    // Then sync every 15 seconds
+                    fileSyncService.startAutoSync(syncFromContainer, 15000);
+                    console.log('[App] File sync started');
+                }
+            } catch (error) {
+                console.error('Failed to initialize background environment:', error);
+            }
+        };
+        initBackgroundEnv();
+
+        // Cleanup on unmount
+        return () => {
+            fileSyncService.stopAutoSync();
+        };
+    }, []);
+
+    // Fetch file content when active file changes if it's empty/synced
+    React.useEffect(() => {
         if (activeFileId) {
-            markFileSaved(activeFileId);
+            const { fetchFileContent } = useFileStore.getState();
+            fetchFileContent(activeFileId);
+        }
+    }, [activeFileId]);
+
+    const handleSave = async () => {
+        // STRICT MODE: Save to container ONLY
+        if (!backgroundEnvManager.isVirtualEnvAvailable()) {
+            addNotification({ type: 'error', message: 'Virtual environment not available. Cannot save file.' });
+            return;
+        }
+
+        const activeFile = getActiveFile();
+        if (activeFile) {
+            try {
+                await fileSyncService.pushFile(activeFile.path, activeFile.content);
+                console.log('[App] File synced to container:', activeFile.path);
+
+                // Only mark saved locally if backend success
+                markFileSaved(activeFileId);
+                addNotification({ type: 'success', message: 'File saved to Docker' });
+            } catch (error) {
+                console.error('[App] Failed to sync file to container:', error);
+                addNotification({ type: 'error', message: `Failed to save to Docker: ${error.message}` });
+            }
         }
     }, [activeFileId, addNotification, markFileSaved]);
 
@@ -2732,8 +2810,13 @@ function App() {
 
         try {
             const { input } = useExecutionStore.getState();
-            // Use activeFile directly
-            const result = await executorService.execute(activeFile.content, activeFile.language, activeFile.name, input);
+
+            const result = await executorService.execute(
+                activeFile.content,
+                activeFile.language,
+                activeFile.name,
+                input
+            );
             const executionTime = Date.now() - startTime;
             setExecutionTime(executionTime);
             setShowOutput(true);
@@ -2841,6 +2924,7 @@ function App() {
         }
     }), [handleRunCode, handleSave, openModal, rightPanelOpen, toggleRightPanel, terminalOpen, setTerminalOpen]);
 
+    // Verify voice commands support
     const { isListening, toggleListening, feedback, isSupported } = useVoiceCommands(voiceCommands);
 
     // Show voice feedback
@@ -2850,6 +2934,17 @@ function App() {
         }
     }, [feedback]);
 
+    // Keyboard Shortcuts (Ctrl+S for Save)
+    useEffect(() => {
+        const handleKeyDown = (e) => {
+            if ((e.ctrlKey || e.metaKey) && e.key === 's') {
+                e.preventDefault();
+                handleSave();
+            }
+        };
+        window.addEventListener('keydown', handleKeyDown);
+        return () => window.removeEventListener('keydown', handleKeyDown);
+    }, [handleSave]);
 
     return (
         <div className="app">
@@ -3031,7 +3126,7 @@ function App() {
             <StatusBar />
 
             {/* Modals */}
-            <NewFileModal />
+
             <SettingsModal />
             <PortfolioGeneratorModal />
             <DeploymentModalComponent />

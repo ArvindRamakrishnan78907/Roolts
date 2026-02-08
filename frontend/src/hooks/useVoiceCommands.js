@@ -1,11 +1,17 @@
 
-import React, { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 
 export const useVoiceCommands = (commands = {}) => {
     const [isListening, setIsListening] = useState(false);
     const [transcript, setTranscript] = useState('');
     const [feedback, setFeedback] = useState(null); // { type: 'success' | 'error', message: '' }
     const [recognition, setRecognition] = useState(null);
+    const commandsRef = useRef(commands);
+
+    // Update commands ref when commands change
+    useEffect(() => {
+        commandsRef.current = commands;
+    }, [commands]);
 
     const commandsRef = React.useRef(commands);
 
@@ -39,12 +45,12 @@ export const useVoiceCommands = (commands = {}) => {
 
                 console.log('Voice Command:', text);
 
-                // Match command
+                // Match command using current commands ref
                 let matched = false;
+                const currentCommands = commandsRef.current;
 
                 // Direct match or "sounds like" match
-                // Use ref current value
-                for (const [command, action] of Object.entries(commandsRef.current)) {
+                for (const [command, action] of Object.entries(currentCommands)) {
                     if (text.includes(command.toLowerCase())) {
                         action();
                         setFeedback({ type: 'success', message: `Executed: "${command}"` });
@@ -68,7 +74,7 @@ export const useVoiceCommands = (commands = {}) => {
         } else {
             setFeedback({ type: 'error', message: 'Voice control not supported in this browser.' });
         }
-    }, []); // Empty dependency array - only initialize once!
+    }, []); // Remove commands from dependency array
 
     const toggleListening = useCallback(() => {
         if (!recognition) return;
