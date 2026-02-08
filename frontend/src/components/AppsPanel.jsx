@@ -1,17 +1,25 @@
-import React from 'react';
-import { FiGrid, FiActivity, FiMessageSquare, FiCode } from 'react-icons/fi';
+import React, { useState } from 'react';
+import { FiGrid, FiActivity, FiMessageSquare, FiCode, FiPhone, FiCpu, FiMusic, FiPackage, FiSettings, FiCamera, FiChrome, FiMap, FiMail } from 'react-icons/fi';
+import CallingPanel from './CallingPanel';
 
 const AppsPanel = ({ onOpenApp }) => {
+    const [activeAppId, setActiveAppId] = useState(null);
+
     // Built-in apps
     const apps = [
-        { id: 'notes', name: 'Notes', icon: <FiMessageSquare />, color: '#f1c40f', type: 'builtin' },
-        { id: 'calc', name: 'Calculator', icon: <FiActivity />, color: '#e74c3c', type: 'builtin' },
-        { id: 'quickpython', name: 'Quick Python', icon: <FiCode />, color: '#3498db', type: 'builtin' },
+        { id: 'notes', name: 'Notes', icon: <FiMessageSquare />, color: '#f1c40f' },
+        { id: 'calc', name: 'Calculator', icon: <FiActivity />, color: '#e74c3c' },
+        { id: 'quickpython', name: 'Quick Python', icon: <FiCode />, color: '#3498db' },
+        { id: 'calls', name: 'Calls', icon: <FiPhone />, color: '#2ecc71' },
     ];
 
     // Get current time
     const now = new Date();
     const timeString = now.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true });
+
+    if (activeAppId === 'calls') {
+        return <CallingPanel onBack={() => setActiveAppId(null)} />;
+    }
 
     return (
         <div className="panel-content" style={{ padding: '20px' }}>
@@ -36,7 +44,13 @@ const AppsPanel = ({ onOpenApp }) => {
                         cursor: 'pointer',
                         transition: 'transform 0.1s'
                     }}
-                        onClick={() => onOpenApp && onOpenApp(app.id)}
+                        onClick={() => {
+                            if (app.id === 'calls') {
+                                setActiveAppId('calls');
+                            } else {
+                                onOpenApp && onOpenApp(app.id);
+                            }
+                        }}
                         onMouseEnter={(e) => e.currentTarget.style.transform = 'scale(1.05)'}
                         onMouseLeave={(e) => e.currentTarget.style.transform = 'scale(1)'}
                     >
@@ -69,14 +83,8 @@ const AppsPanel = ({ onOpenApp }) => {
                     </div>
                 ))}
             </div>
-
-            {/* Navigation dots */}
-            <div style={{ display: 'flex', justifyContent: 'center', marginTop: '30px', gap: '6px' }}>
-                <div style={{ width: '6px', height: '6px', borderRadius: '50%', backgroundColor: 'var(--text-primary)', opacity: 0.8 }}></div>
-                <div style={{ width: '6px', height: '6px', borderRadius: '50%', backgroundColor: 'var(--text-primary)', opacity: 0.3 }}></div>
-            </div>
         </div>
     );
-};
+}
 
 export default AppsPanel;
