@@ -110,15 +110,13 @@ export const useFileStore = create(
 
                         // Remove from map so we know what's left (new files)
                         containerMap.delete(existingFile.path);
-                    } else if (existingFile.synced) {
-                        // File was synced but is no longer in container.
-                        // STRICT MODE: Backend is source of truth.
-                        // If it's gone from backend, it's gone from frontend.
-                        // We skip adding it to newFiles, effectively deleting it.
-                        hasChanges = true;
                     } else {
-                        // Local-only file (not synced yet)
-                        // In strict mode, these shouldn't exist for long, but we keep them until they are pushed or user deletes them.
+                        // CRITICAL FIX: Keep file even if not in sync response
+                        // Only explicit delete operations should remove files
+                        // This prevents accidental deletion during:
+                        // - Partial sync responses
+                        // - Race conditions during file/directory creation
+                        // - Network issues or incomplete responses
                         newFiles.push(existingFile);
                     }
                 });
@@ -136,7 +134,7 @@ export const useFileStore = create(
                     return state;
                 }
 
-                console.log('[FileStore] Synced files. Updated count:', newFiles.length);
+                console.log('[FileStore] Synced files. Container:', containerFiles.length, 'Existing:', state.files.length, 'Result:', newFiles.length);
                 return { files: newFiles };
             }),
 

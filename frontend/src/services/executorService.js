@@ -131,12 +131,10 @@ export const executorService = {
             // Execute the command
             const result = await backgroundEnvManager.executeCommand(command, 30);
 
-            // Clean up the temporary file
-            try {
-                await backgroundEnvManager.deleteFile(filePath);
-            } catch (cleanupError) {
-                console.warn('Failed to cleanup temp file:', cleanupError);
-            }
+            // DO NOT delete the file - let it persist in the workspace
+            // CRITICAL: Users expect their files to remain after execution
+            // Removing auto-delete prevents files from disappearing
+            console.log('[Executor] File executed successfully, keeping file:', filePath);
 
             // Format result to match local execution format
             return {
