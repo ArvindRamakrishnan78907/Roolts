@@ -13,6 +13,13 @@ export const useVoiceCommands = (commands = {}) => {
         commandsRef.current = commands;
     }, [commands]);
 
+    const commandsRef = React.useRef(commands);
+
+    // Update ref when commands change
+    useEffect(() => {
+        commandsRef.current = commands;
+    }, [commands]);
+
     useEffect(() => {
         const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
 
