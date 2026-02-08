@@ -27,6 +27,7 @@ from routes.snippets import snippets_bp
 from routes.portfolio import portfolio_bp
 from routes.deployment import deployment_bp
 from routes.virtual_env import virtual_env_bp
+from routes.terminal import terminal_bp
 
 
 def create_app():
@@ -62,6 +63,7 @@ def create_app():
     app.register_blueprint(portfolio_bp, url_prefix='/api/portfolio')  # Portfolio Generator
     app.register_blueprint(deployment_bp, url_prefix='/api/deployment')  # Deployment
     app.register_blueprint(virtual_env_bp, url_prefix='/api/virtual-env')  # Virtual Environments (Docker-Only Execution)
+    app.register_blueprint(terminal_bp, url_prefix='/api/terminal')  # Terminal Interface
     
     # Health check endpoint
     @app.route('/api/health')

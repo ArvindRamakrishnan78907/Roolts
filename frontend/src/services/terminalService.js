@@ -5,11 +5,17 @@
 
 import axios from 'axios';
 
+// DEVELOPMENT CONFIGURATION
+// Default user ID for development/testing
+// TODO: Replace with proper authentication system in production
+const DEV_USER_ID = '1';
+
 const terminalApi = axios.create({
     baseURL: '/api/terminal',
     timeout: 120000, // 2 minutes for long commands like pip install
     headers: {
-        'Content-Type': 'application/json'
+        'Content-Type': 'application/json',
+        'X-User-ID': DEV_USER_ID
     }
 });
 
