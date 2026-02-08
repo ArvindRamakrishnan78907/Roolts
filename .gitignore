@@ -38,3 +38,4 @@ coverage/
 *.jar
 .gradle/
 build/
+node_modules_trash/

@@ -1,11 +1,18 @@
 
-import { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 
 export const useVoiceCommands = (commands = {}) => {
     const [isListening, setIsListening] = useState(false);
     const [transcript, setTranscript] = useState('');
     const [feedback, setFeedback] = useState(null); // { type: 'success' | 'error', message: '' }
     const [recognition, setRecognition] = useState(null);
+
+    const commandsRef = React.useRef(commands);
+
+    // Update ref when commands change
+    useEffect(() => {
+        commandsRef.current = commands;
+    }, [commands]);
 
     useEffect(() => {
         const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
@@ -36,7 +43,8 @@ export const useVoiceCommands = (commands = {}) => {
                 let matched = false;
 
                 // Direct match or "sounds like" match
-                for (const [command, action] of Object.entries(commands)) {
+                // Use ref current value
+                for (const [command, action] of Object.entries(commandsRef.current)) {
                     if (text.includes(command.toLowerCase())) {
                         action();
                         setFeedback({ type: 'success', message: `Executed: "${command}"` });
@@ -60,7 +68,7 @@ export const useVoiceCommands = (commands = {}) => {
         } else {
             setFeedback({ type: 'error', message: 'Voice control not supported in this browser.' });
         }
-    }, [commands]); // Re-create if commands change
+    }, []); // Empty dependency array - only initialize once!
 
     const toggleListening = useCallback(() => {
         if (!recognition) return;

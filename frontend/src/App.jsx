@@ -46,8 +46,8 @@ import {
     FiMapPin,
     FiLayout,
     FiMic,
-    FiMicOff,
-    FiGrid
+    FiGrid,
+    FiMessageSquare
 } from 'react-icons/fi';
 import ReactMarkdown from 'react-markdown';
 import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter';
@@ -74,6 +74,9 @@ import WebPreview from './components/WebPreview';
 import ReviewPanel from './components/ReviewPanel';
 import SnippetPanel from './components/SnippetPanel';
 import AppsPanel from './components/AppsPanel';
+import NotesApp from './components/apps/NotesApp';
+import CalculatorApp from './components/apps/CalculatorApp';
+import QuickPythonApp from './components/apps/QuickPythonApp';
 import PortfolioGenerator from './components/PortfolioGenerator';
 import DeploymentModal from './components/DeploymentModal';
 import { useVoiceCommands } from './hooks/useVoiceCommands';
@@ -1807,7 +1810,207 @@ function RightPanel({ style, editorMinimized }) {
             {rightPanelTab === 'social' && <SocialPanel />}
             {rightPanelTab === 'learn' && <LearningPanel />}
             {rightPanelTab === 'review' && <ReviewPanel />}
-            {rightPanelTab === 'apps' && <AppsPanel />}
+            {rightPanelTab === 'apps' && <AppsPanel onOpenApp={setRightPanelTab} />}
+            {rightPanelTab === 'notes' && (
+                <NotesApp
+                    onBack={() => setRightPanelTab('apps')}
+                    isWindowed={false}
+                    onPopOut={() => {
+                        // Open a new window with the Notes app
+                        const notesWindow = window.open('', 'Roolts Notes', 'width=900,height=700');
+                        if (notesWindow) {
+                            notesWindow.document.write(`
+                                <!DOCTYPE html>
+                                <html>
+                                <head>
+                                    <title>Roolts Notes</title>
+                                    <style>
+                                        * { margin: 0; padding: 0; box-sizing: border-box; }
+                                        body { 
+                                            font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+                                            height: 100vh;
+                                            overflow: hidden;
+                                        }
+                                        #notes-root { height: 100%; }
+                                    </style>
+                                    ${document.querySelector('style') ? document.querySelector('style').outerHTML : ''}
+                                    <link rel="preconnect" href="https://fonts.googleapis.com">
+                                    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+                                    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+                                </head>
+                                <body>
+                                    <div id="notes-root"></div>
+                                    <script>
+                                        // Notify parent that window is closing
+                                        window.addEventListener('beforeunload', () => {
+                                            if (window.opener && !window.opener.closed) {
+                                                window.opener.postMessage({ type: 'notes-window-closed' }, '*');
+                                            }
+                                        });
+                                    </script>
+                                </body>
+                                </html>
+                            `);
+                            notesWindow.document.close();
+
+                            // Import React and ReactDOM dynamically in the new window
+                            import('react').then((React) => {
+                                import('react-dom/client').then((ReactDOM) => {
+                                    import('./components/apps/NotesApp').then((module) => {
+                                        const NotesApp = module.default;
+                                        const root = ReactDOM.createRoot(notesWindow.document.getElementById('notes-root'));
+                                        root.render(React.createElement(NotesApp, { isWindowed: true }));
+                                    });
+                                });
+                            });
+                        }
+                    }}
+                    onOpenNewWindow={() => {
+                        // Same as onPopOut for now
+                        const notesWindow = window.open('', 'Roolts Notes ' + Date.now(), 'width=900,height=700');
+                        if (notesWindow) {
+                            notesWindow.document.write(`
+                                <!DOCTYPE html>
+                                <html>
+                                <head>
+                                    <title>Roolts Notes</title>
+                                    <style>
+                                        * { margin: 0; padding: 0; box-sizing: border-box; }
+                                        body { 
+                                            font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+                                            height: 100vh;
+                                            overflow: hidden;
+                                        }
+                                        #notes-root { height: 100%; }
+                                    </style>
+                                    ${document.querySelector('style') ? document.querySelector('style').outerHTML : ''}
+                                    <link rel="preconnect" href="https://fonts.googleapis.com">
+                                    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+                                    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+                                </head>
+                                <body>
+                                    <div id="notes-root"></div>
+                                </body>
+                                </html>
+                            `);
+                            notesWindow.document.close();
+
+                            // Import React and ReactDOM dynamically in the new window
+                            import('react').then((React) => {
+                                import('react-dom/client').then((ReactDOM) => {
+                                    import('./components/apps/NotesApp').then((module) => {
+                                        const NotesApp = module.default;
+                                        const root = ReactDOM.createRoot(notesWindow.document.getElementById('notes-root'));
+                                        root.render(React.createElement(NotesApp, { isWindowed: true }));
+                                    });
+                                });
+                            });
+                        }
+                    }}
+                />
+            )}
+            {rightPanelTab === 'calc' && (
+                <CalculatorApp
+                    onBack={() => setRightPanelTab('apps')}
+                    isWindowed={false}
+                    onPopOut={() => {
+                        const calcWindow = window.open('', 'Roolts Calculator', 'width=400,height=600');
+                        if (calcWindow) {
+                            calcWindow.document.write(`
+                                <!DOCTYPE html>
+                                <html>
+                                <head>
+                                    <title>Roolts Calculator</title>
+                                    <style>
+                                        * { margin: 0; padding: 0; box-sizing: border-box; }
+                                        body { 
+                                            font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+                                            height: 100vh;
+                                            overflow: hidden;
+                                            background-color: #f5f5f5;
+                                        }
+                                        #calc-root { height: 100%; }
+                                    </style>
+                                    ${document.querySelector('style') ? document.querySelector('style').outerHTML : ''}
+                                </head>
+                                <body>
+                                    <div id="calc-root"></div>
+                                    <script>
+                                        window.addEventListener('beforeunload', () => {
+                                            if (window.opener && !window.opener.closed) {
+                                                window.opener.postMessage({ type: 'calc-window-closed' }, '*');
+                                            }
+                                        });
+                                    </script>
+                                </body>
+                                </html>
+                            `);
+                            calcWindow.document.close();
+
+                            import('react').then((React) => {
+                                import('react-dom/client').then((ReactDOM) => {
+                                    import('./components/apps/CalculatorApp').then((module) => {
+                                        const CalculatorApp = module.default;
+                                        const root = ReactDOM.createRoot(calcWindow.document.getElementById('calc-root'));
+                                        root.render(React.createElement(CalculatorApp, { isWindowed: true }));
+                                    });
+                                });
+                            });
+                        }
+                    }}
+                />
+            )}
+            {rightPanelTab === 'quickpython' && (
+                <QuickPythonApp
+                    onBack={() => setRightPanelTab('apps')}
+                    isWindowed={false}
+                    onPopOut={() => {
+                        const pyWindow = window.open('', 'Roolts Quick Python', 'width=800,height=600');
+                        if (pyWindow) {
+                            pyWindow.document.write(`
+                                <!DOCTYPE html>
+                                <html>
+                                <head>
+                                    <title>Roolts Quick Python</title>
+                                    <style>
+                                        * { margin: 0; padding: 0; box-sizing: border-box; }
+                                        body { 
+                                            font-family: 'Consolas', 'Courier New', monospace;
+                                            height: 100vh;
+                                            overflow: hidden;
+                                            background-color: #1e1e1e;
+                                        }
+                                        #py-root { height: 100%; }
+                                    </style>
+                                    ${document.querySelector('style') ? document.querySelector('style').outerHTML : ''}
+                                </head>
+                                <body>
+                                    <div id="py-root"></div>
+                                    <script>
+                                        window.addEventListener('beforeunload', () => {
+                                            if (window.opener && !window.opener.closed) {
+                                                window.opener.postMessage({ type: 'py-window-closed' }, '*');
+                                            }
+                                        });
+                                    </script>
+                                </body>
+                                </html>
+                            `);
+                            pyWindow.document.close();
+
+                            import('react').then((React) => {
+                                import('react-dom/client').then((ReactDOM) => {
+                                    import('./components/apps/QuickPythonApp').then((module) => {
+                                        const QuickPythonApp = module.default;
+                                        const root = ReactDOM.createRoot(pyWindow.document.getElementById('py-root'));
+                                        root.render(React.createElement(QuickPythonApp, { isWindowed: true }));
+                                    });
+                                });
+                            });
+                        }
+                    }}
+                />
+            )}
         </div>
     );
 }
@@ -2048,7 +2251,7 @@ function Notifications() {
 // Settings Modal
 // Settings Modal
 function SettingsModal() {
-    const { modals, closeModal } = useUIStore();
+    const { modals, closeModal, addNotification } = useUIStore();
     const {
         theme, backgroundImage, backgroundOpacity, format, features,
         uiFontSize, uiFontFamily,
@@ -2479,14 +2682,25 @@ function App() {
         handleSocialCallbacks();
     }, []);
 
-    const handleSave = () => {
+    const handleSave = React.useCallback(() => {
         addNotification({ type: 'success', message: 'File saved successfully!' });
         if (activeFileId) {
             markFileSaved(activeFileId);
         }
-    };
+    }, [activeFileId, addNotification, markFileSaved]);
 
-    const handleRunCode = async () => {
+    const handleRunCode = React.useCallback(async () => {
+        // activeFile is a derived value, so we should get it from state or depend on it
+        // However, activeFile changes often (content), so depends on activeFile might cause re-renders
+        // But for handleRunCode to be stable, we need to be careful.
+        // Actually, if activeFile content changes, we WANT voiceCommands to update if it depends on handleRunCode?
+        // Wait, if handleRunCode changes, voiceCommands changes (due to dependency).
+        // If voiceCommands changes, useVoiceCommands updates ref (safe now).
+        // So we mainly want to avoid handleRunCode changing on *every* render if nothing changed.
+
+        // Retriving fresh state ref inside might be better to avoid dependencies, but activeFile is passed as prop/hook
+        // Let's just wrap it for now.
+
         if (!activeFile) {
             addNotification({ type: 'error', message: 'No file selected to run' });
             return;
@@ -2518,6 +2732,7 @@ function App() {
 
         try {
             const { input } = useExecutionStore.getState();
+            // Use activeFile directly
             const result = await executorService.execute(activeFile.content, activeFile.language, activeFile.name, input);
             const executionTime = Date.now() - startTime;
             setExecutionTime(executionTime);
@@ -2554,10 +2769,61 @@ function App() {
         }
 
         setExecuting(false);
-    };
+    }, [activeFile, activeFileId, addNotification, rightPanelOpen, toggleRightPanel, setRightPanelTab, setExecuting, setOutput, setError, setExecutionTime, setShowOutput, addToHistory]);
+
+    // Helper function to open Notes app in a new window
+    const openNotesWindow = React.useCallback(() => {
+        const notesWindow = window.open('', 'Roolts Notes', 'width=900,height=700');
+        if (notesWindow) {
+            notesWindow.document.write(`
+                <!DOCTYPE html>
+                <html>
+                <head>
+                    <title>Roolts Notes</title>
+                    <style>
+                        * { margin: 0; padding: 0; box-sizing: border-box; }
+                        body { 
+                            font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+                            height: 100vh;
+                            overflow: hidden;
+                        }
+                        #notes-root { height: 100%; }
+                    </style>
+                    ${document.querySelector('style') ? document.querySelector('style').outerHTML : ''}
+                    <link rel="preconnect" href="https://fonts.googleapis.com">
+                    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+                    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+                </head>
+                <body>
+                    <div id="notes-root"></div>
+                    <script>
+                        // Notify parent that window is closing
+                        window.addEventListener('beforeunload', () => {
+                            if (window.opener && !window.opener.closed) {
+                                window.opener.postMessage({ type: 'notes-window-closed' }, '*');
+                            }
+                        });
+                    </script>
+                </body>
+                </html>
+            `);
+            notesWindow.document.close();
+
+            // Import React and ReactDOM dynamically in the new window
+            import('react').then((React) => {
+                import('react-dom/client').then((ReactDOM) => {
+                    import('./components/apps/NotesApp').then((module) => {
+                        const NotesApp = module.default;
+                        const root = ReactDOM.createRoot(notesWindow.document.getElementById('notes-root'));
+                        root.render(React.createElement(NotesApp, { isWindowed: true }));
+                    });
+                });
+            });
+        }
+    }, []);
 
     // Voice Commands Integration
-    const voiceCommands = {
+    const voiceCommands = React.useMemo(() => ({
         'run code': () => handleRunCode(),
         'save file': () => handleSave(),
         'new file': () => openModal('newFile'),
@@ -2573,7 +2839,7 @@ function App() {
         'close terminal': () => {
             if (terminalOpen) setTerminalOpen(false);
         }
-    };
+    }), [handleRunCode, handleSave, openModal, rightPanelOpen, toggleRightPanel, terminalOpen, setTerminalOpen]);
 
     const { isListening, toggleListening, feedback, isSupported } = useVoiceCommands(voiceCommands);
 
@@ -2633,6 +2899,13 @@ function App() {
                     </button>
                     <button className="btn btn--ghost btn--icon" onClick={() => openModal('newFile')} title="New File">
                         <FiPlus />
+                    </button>
+                    <button
+                        className="btn btn--ghost btn--icon"
+                        onClick={openNotesWindow}
+                        title="Open Notes (Separate Window)"
+                    >
+                        <FiMessageSquare />
                     </button>
                     <button className="btn btn--ghost btn--icon" onClick={() => openModal('settings')} title="Settings">
                         <FiSettings />

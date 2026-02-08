@@ -10,12 +10,22 @@
   "dependencies": {
     "@monaco-editor/react": "^4.6.0",
     "axios": "^1.6.2",
+    "docx": "^9.5.1",
+    "file-saver": "^2.0.5",
+    "html-docx-js": "^0.3.1",
+    "html2canvas": "^1.4.1",
+    "idb": "^8.0.3",
+    "jspdf": "^4.1.0",
     "mermaid": "^10.6.1",
+    "quill-image-resize-module-react": "^3.0.0",
     "react": "^18.2.0",
     "react-dom": "^18.2.0",
     "react-icons": "^4.12.0",
     "react-markdown": "^9.0.1",
+    "react-quill": "^2.0.0",
     "react-syntax-highlighter": "^15.5.0",
+    "react-webcam": "^7.2.0",
+    "uuid": "^13.0.0",
     "zustand": "^4.4.7"
   },
   "devDependencies": {
