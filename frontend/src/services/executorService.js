@@ -75,126 +75,18 @@ export const executorService = {
 
     /**
      * Execute code with specified language
-     * Automatically uses virtual environment if available, otherwise falls back to local execution
-     * @param {string} code - Code to execute
-     * @param {string} language - Programming language
-     * @param {string} filename - Optional filename
-     * @param {string} input - Optional stdin input
-     * @returns {Promise<Object>} Execution result
      */
     execute: async (code, language, filename, input = '') => {
         try {
-            // Try virtual environment execution first
-            const { default: backgroundEnvManager } = await import('./backgroundEnvManager.js');
-
-            if (backgroundEnvManager.isVirtualEnvAvailable()) {
-                console.log('[Executor] Using virtual environment');
-                return await executorService.executeInVirtualEnv(code, language, filename, input);
-            } else {
-                return {
-                    success: false,
-                    error: 'Virtual environment not available. Execution is strictly limited to Docker environment.',
-                    output: ''
-                };
-            }
+            const response = await executorApi.post('/execute', { code, language, filename, input });
+            return response.data;
         } catch (error) {
             return {
                 success: false,
-                error: `Execution failed: ${error.message}`,
+                error: error.response?.data?.error || error.message,
                 output: ''
             };
         }
-    },
-
-    /**
-     * Execute code in the background virtual environment
-     * @param {string} code - Code to execute
-     * @param {string} language - Programming language
-     * @param {string} filename - Optional filename
-     * @param {string} input - Optional stdin input
-     * @returns {Promise<Object>} Execution result
-     */
-    executeInVirtualEnv: async (code, language, filename = null, input = '') => {
-        try {
-            const { default: backgroundEnvManager } = await import('./backgroundEnvManager.js');
-
-            // Create a temporary file with the code
-            const tempFilename = filename || `main.${executorService.getFileExtension(language)}`;
-            const filePath = `/workspace/${tempFilename}`;
-
-            // Write code to file in the environment
-            await backgroundEnvManager.writeFile(filePath, code);
-
-            // Build execution command based on language
-            const command = executorService.buildExecutionCommand(language, tempFilename, input);
-
-            // Execute the command
-            const result = await backgroundEnvManager.executeCommand(command, 30);
-
-            // DO NOT delete the file - let it persist in the workspace
-            // CRITICAL: Users expect their files to remain after execution
-            // Removing auto-delete prevents files from disappearing
-            console.log('[Executor] File executed successfully, keeping file:', filePath);
-
-            // Format result to match local execution format
-            return {
-                success: result.exit_code === 0,
-                output: result.stdout || '',
-                error: result.stderr || '',
-                execution_time: result.execution_time
-            };
-        } catch (error) {
-            return {
-                success: false,
-                error: error.message,
-                output: ''
-            };
-        }
-    },
-
-    /**
-     * Build execution command for a given language
-     * @param {string} language - Programming language
-     * @param {string} filename - Filename
-     * @param {string} input - Optional stdin input
-     * @returns {string} Execution command
-     */
-    buildExecutionCommand: (language, filename, input = '') => {
-        const commands = {
-            python: `python3 ${filename}`,
-            javascript: `node ${filename}`,
-            java: `javac ${filename} && java ${filename.replace('.java', '')}`,
-            c: `gcc ${filename} -o program && ./program`,
-            cpp: `g++ ${filename} -o program && ./program`
-        };
-
-        let command = commands[language.toLowerCase()] || `cat ${filename}`;
-
-        // Add input if provided
-        if (input) {
-            command = `echo "${input.replace(/"/g, '\\"')}" | ${command}`;
-        }
-
-        return command;
-    },
-
-    /**
-     * Get file extension for a language
-     * @param {string} language - Programming language
-     * @returns {string} File extension
-     */
-    getFileExtension: (language) => {
-        const extensions = {
-            python: 'py',
-            javascript: 'js',
-            java: 'java',
-            c: 'c',
-            cpp: 'cpp',
-            html: 'html',
-            css: 'css',
-            json: 'json'
-        };
-        return extensions[language.toLowerCase()] || 'txt';
     },
 
     // ============ Helpers ============
