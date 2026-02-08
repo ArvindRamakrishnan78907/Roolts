@@ -80,6 +80,7 @@ import QuickPythonApp from './components/apps/QuickPythonApp';
 import PortfolioGenerator from './components/PortfolioGenerator';
 import DeploymentModal from './components/DeploymentModal';
 import { useVoiceCommands } from './hooks/useVoiceCommands';
+import { useAutoSave } from './hooks/useAutoSave';
 import SyncManager from './components/SyncManager';
 
 // File Explorer Component
@@ -530,6 +531,9 @@ function CodeEditor() {
     // Editor options derived from settings... (implied context, but I will just return the overlay structure)
 
     // Editor options derived from settings... (implied context, but I will just return the overlay structure)
+
+    // Enable auto-save to Docker container
+    useAutoSave();
 
     if (!activeFile) {
         return (
