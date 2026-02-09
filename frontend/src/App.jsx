@@ -1022,7 +1022,18 @@ function CodeEditor({ isScribbleMode, scribbleTool = 'pen', scribbleColor = '#ff
     const decorationsRef = React.useRef([]);
     const decorationIdToHighlightId = React.useRef({});
 
-    // Synch decorations when file/highlights change
+    // Use Refs for values needed in stable Monaco callbacks
+    const activeFileIdRef = React.useRef(activeFileId);
+    const removeHighlightRef = React.useRef(removeHighlight);
+    const scribblePenSizeRef = React.useRef(3);
+    const scribbleEraserSizeRef = React.useRef(15);
+
+    const { scribblePenSize, scribbleEraserSize } = useSettingsStore();
+
+    useEffect(() => { activeFileIdRef.current = activeFileId; }, [activeFileId]);
+    useEffect(() => { removeHighlightRef.current = removeHighlight; }, [removeHighlight]);
+    useEffect(() => { scribblePenSizeRef.current = scribblePenSize; }, [scribblePenSize]);
+    useEffect(() => { scribbleEraserSizeRef.current = scribbleEraserSize; }, [scribbleEraserSize]);
     useEffect(() => {
         if (editorRef.current && activeFile) {
             const highlights = activeFile.highlights || [];
@@ -1098,7 +1109,7 @@ function CodeEditor({ isScribbleMode, scribbleTool = 'pen', scribbleColor = '#ff
                 const selection = ed.getSelection();
                 if (selection && !selection.isEmpty()) {
                     window.dispatchEvent(new CustomEvent('open-highlight-modal', {
-                        detail: { selection, fileId: activeFileId }
+                        detail: { selection, fileId: activeFileIdRef.current }
                     }));
                 }
             }
@@ -1113,23 +1124,27 @@ function CodeEditor({ isScribbleMode, scribbleTool = 'pen', scribbleColor = '#ff
             run: (ed) => {
                 const position = ed.getPosition();
                 const model = ed.getModel();
-                // Get decorations at position
-                const decorations = model.getDecorationsInRange(new monaco.Range(position.lineNumber, position.column, position.lineNumber, position.column));
+                // Get all decorations on the current line
+                const decorations = model.getLineDecorations(position.lineNumber);
 
-                // Find visible highlights
-                const highlightDec = decorations.find(d =>
-                    d.options.className && d.options.className.startsWith('highlight-')
-                );
+                // Find a highlight decoration that contains the current cursor column
+                const highlightDec = decorations.find(d => {
+                    const isHighlight = d.options.className && d.options.className.includes('highlight-');
+                    if (!isHighlight) return false;
+
+                    // Column intersection check
+                    return position.column >= d.range.startColumn && position.column <= d.range.endColumn;
+                });
 
                 if (highlightDec) {
                     const highlightId = decorationIdToHighlightId.current[highlightDec.id];
                     if (highlightId) {
-                        removeHighlight(activeFileId, highlightId);
+                        removeHighlightRef.current(activeFileIdRef.current, highlightId);
                         // Also proactively remove overlapping ones visually just in case
                         decorations.forEach(d => {
-                            if (d.options.className && d.options.className.startsWith('highlight-') && d.id !== highlightDec.id) {
+                            if (d.options.className && d.options.className.includes('highlight-') && d.id !== highlightDec.id) {
                                 const hId = decorationIdToHighlightId.current[d.id];
-                                if (hId) removeHighlight(activeFileId, hId);
+                                if (hId) removeHighlightRef.current(activeFileIdRef.current, hId);
                             }
                         });
                     }
@@ -1231,7 +1246,6 @@ function CodeEditor({ isScribbleMode, scribbleTool = 'pen', scribbleColor = '#ff
                 onMount={handleEditorDidMount}
             />
 
-            {/* Scribble Overlay - Render after Editor to ensure it's on top - EXPERIMENTAL GATED */}
             {experimental?.scribble && activeFile && (
                 <ScribbleOverlay
                     key={activeFile.id}
@@ -1243,6 +1257,8 @@ function CodeEditor({ isScribbleMode, scribbleTool = 'pen', scribbleColor = '#ff
                     isActive={isScribbleMode}
                     tool={scribbleTool}
                     color={scribbleColor}
+                    penSize={scribblePenSize}
+                    eraserSize={scribbleEraserSize}
                 />
             )}
 
@@ -2884,10 +2900,10 @@ function SettingsModal() {
     const { modals, closeModal, addNotification } = useUIStore();
     const {
         theme, backgroundImage, backgroundOpacity, format, features, experimental,
-        uiFontSize, uiFontFamily,
+        uiFontSize, uiFontFamily, scribblePenSize, scribbleEraserSize,
         setTheme, setBackgroundImage, setBackgroundOpacity,
         setUiFontSize, setUiFontFamily,
-        updateFormat, toggleFeature, setFeature, toggleExperimental
+        updateFormat, toggleFeature, setFeature, toggleExperimental, setScribbleSize
     } = useSettingsStore();
     const [activeTab, setActiveTab] = useState('theme');
 
@@ -3048,6 +3064,34 @@ function SettingsModal() {
                                             <option value="'Courier New'">Courier New (Monospace)</option>
                                         </select>
                                     </div>
+
+                                    <div className="form-group" style={{ marginBottom: '1.5rem' }}>
+                                        <h4 style={{ fontSize: '13px', marginBottom: '8px', color: 'var(--text-secondary)' }}>Scribble Tool Sizes</h4>
+                                        <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                                            <div>
+                                                <label style={{ fontSize: '11px' }}>Pen Size ({scribblePenSize}px)</label>
+                                                <input
+                                                    type="range"
+                                                    min="1"
+                                                    max="10"
+                                                    value={scribblePenSize}
+                                                    onChange={(e) => setScribbleSize('pen', parseInt(e.target.value))}
+                                                    style={{ width: '100%' }}
+                                                />
+                                            </div>
+                                            <div>
+                                                <label style={{ fontSize: '11px' }}>Eraser Size ({scribbleEraserSize}px)</label>
+                                                <input
+                                                    type="range"
+                                                    min="5"
+                                                    max="50"
+                                                    value={scribbleEraserSize}
+                                                    onChange={(e) => setScribbleSize('eraser', parseInt(e.target.value))}
+                                                    style={{ width: '100%' }}
+                                                />
+                                            </div>
+                                        </div>
+                                    </div>
                                 </div >
                             )
                             }
@@ -3187,31 +3231,36 @@ function HighlightModal() {
             const activeFile = files.find(f => f.id === data.fileId);
             const selection = data.selection;
 
-            // Remove Overlapping Highlights
+            // Remove Overlapping Highlights (Accurate Detection)
             if (activeFile && activeFile.highlights) {
-                const rangeIntersect = (r1, r2) => {
-                    // Simple Box Intersection
-                    return !(r2.startLineNumber > r1.endLineNumber ||
-                        r2.endLineNumber < r1.startLineNumber ||
-                        (r2.startLineNumber === r1.endLineNumber && r2.startColumn > r1.endColumn) ||
-                        (r2.endLineNumber === r1.startLineNumber && r2.endColumn < r1.startColumn));
-                    // This is rough. Accurate is: 
-                    // range1.start < range2.end && range1.end > range2.start
-                    // Monaco ranges compare:
-                    // Range.intersectRanges(range1, range2) != null
-                };
-
-                // Since we don't have monaco instance here easily, let's use simple logic
-                // Overlap if lines overlap
+                const s = selection;
                 const overlaps = activeFile.highlights.filter(h => {
                     const r = h.range;
-                    const s = selection;
-                    // Check vertical overlap
-                    if (s.startLineNumber > r.endLineNumber || s.endLineNumber < r.startLineNumber) return false;
-                    // If on same line, check horizontal
-                    // This simple check removes any highlight that touches the new selection lines. 
-                    // User said "A text should not be double highlighted". 
-                    // Aggressive cleanup is safer: overlapping anywhere -> remove old.
+
+                    // Ranges overlap if: range1.start < range2.end && range1.end > range2.start
+                    // More precisely, check if they intersect at all.
+                    // Two ranges [A, B] and [C, D] intersect if (A <= D and C <= B)
+                    // For Monaco ranges, this means:
+                    // (s.startLineNumber < r.endLineNumber || (s.startLineNumber === r.endLineNumber && s.startColumn <= r.endColumn)) &&
+                    // (r.startLineNumber < s.endLineNumber || (r.startLineNumber === s.endLineNumber && r.startColumn <= s.endColumn))
+
+                    // Simplified check for overlap:
+                    // If one range starts after the other ends, they don't overlap.
+                    // Otherwise, they do.
+                    const sStart = { lineNumber: s.startLineNumber, column: s.startColumn };
+                    const sEnd = { lineNumber: s.endLineNumber, column: s.endColumn };
+                    const rStart = { lineNumber: r.startLineNumber, column: r.startColumn };
+                    const rEnd = { lineNumber: r.endLineNumber, column: r.endColumn };
+
+                    // Check if s is completely after r
+                    if (sStart.lineNumber > rEnd.lineNumber || (sStart.lineNumber === rEnd.lineNumber && sStart.column >= rEnd.column)) {
+                        return false;
+                    }
+                    // Check if r is completely after s
+                    if (rStart.lineNumber > sEnd.lineNumber || (rStart.lineNumber === sEnd.lineNumber && rStart.column >= sEnd.column)) {
+                        return false;
+                    }
+                    // If neither is completely after the other, they must overlap
                     return true;
                 });
 
@@ -3315,7 +3364,7 @@ function App() {
         sidebarOpen, toggleSidebar, openModal, addNotification, editorMinimized, toggleEditorMinimized,
         rightPanelOpen, toggleRightPanel, setRightPanelTab
     } = useUIStore();
-    const { files, activeFileId, markFileSaved } = useFileStore();
+    const { files, activeFileId, removeLastDrawing, clearDrawings, markFileSaved } = useFileStore();
     const { isExecuting, setExecuting, setOutput, setError, setExecutionTime, addToHistory, setShowOutput } = useExecutionStore();
     const { setConnected, setRepositories, isConnected } = useGitHubStore();
     const [terminalOpen, setTerminalOpen] = useState(false);
@@ -3667,28 +3716,7 @@ function App() {
                         <FiSettings />
                     </button>
 
-                    {/* Circular Undo button for Scribble - appears when scribble mode is active */}
-                    {isScribbleMode && (
-                        <button
-                            className="btn btn--icon"
-                            onClick={() => activeFileId && removeLastDrawing(activeFileId)}
-                            title="Undo Scribble"
-                            style={{
-                                border: '2px solid var(--accent-primary)',
-                                borderRadius: '50%',
-                                width: '36px',
-                                height: '36px',
-                                display: 'flex',
-                                alignItems: 'center',
-                                justifyContent: 'center',
-                                padding: 0,
-                                background: 'var(--bg-primary)',
-                                marginLeft: '8px'
-                            }}
-                        >
-                            <FiRotateCcw size={18} />
-                        </button>
-                    )}
+
 
                 </div>
             </header>

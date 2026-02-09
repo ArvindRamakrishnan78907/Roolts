@@ -2,18 +2,13 @@ import React, { useRef, useState, useEffect } from 'react';
 import { FiEdit2, FiTrash2, FiRotateCcw, FiX, FiCheck } from 'react-icons/fi';
 import './ScribbleOverlay.css'; // We'll need to create this or add to index.css
 
-const ScribbleOverlay = ({ fileId, drawings = [], onAddDrawing, onUndo, onClear, isActive, tool, color, onInitialMount }) => {
-    // ... (rest is same until toolbar)
-
-
-
+const ScribbleOverlay = ({ fileId, drawings = [], onAddDrawing, onUndo, onClear, isActive, tool, color, penSize = 3, eraserSize = 15 }) => {
     const canvasRef = useRef(null);
     const [isDrawing, setIsDrawing] = useState(false);
     const [currentPath, setCurrentPath] = useState([]);
-    // Removed internal state: tool, color, lineWidth (can verify if lineWidth is needed or keep it)
-    // Actually keep lineWidth local or default for now
-    const [lineWidth, setLineWidth] = useState(3);
     const [context, setContext] = useState(null);
+
+    const lineWidth = tool === 'eraser' ? eraserSize : penSize;
 
     // Initialize canvas context
     useEffect(() => {

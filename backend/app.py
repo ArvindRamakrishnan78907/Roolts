@@ -38,14 +38,14 @@ def create_app():
     """Create and configure the Flask application."""
     app = Flask(__name__)
     
-    # Setup portable compiler if needed
+    # Setup portable compilers and runtimes if needed
     try:
-        compiler_path = setup_compiler()
-        if compiler_path:
-            os.environ["PATH"] += os.pathsep + compiler_path
-            print(f"Added portable compiler to PATH: {compiler_path}")
+        from utils.compiler_manager import setup_all_runtimes
+        runtime_paths = setup_all_runtimes()
+        if runtime_paths:
+            print(f"Added {len(runtime_paths)} portable runtimes to PATH")
     except Exception as e:
-        print(f"Warning: Failed to setup portable compiler: {e}")
+        print(f"Warning: Failed to setup portable runtimes: {e}")
     
     # Configuration
     app.config['SECRET_KEY'] = os.getenv('SECRET_KEY', 'dev-secret-key-change-in-production')

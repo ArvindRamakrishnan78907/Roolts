@@ -9,6 +9,7 @@ import threading
 import queue
 import time
 from flask import Blueprint, jsonify, request
+from pathlib import Path
 
 terminal_bp = Blueprint('terminal', __name__)
 
@@ -24,6 +25,41 @@ class TerminalSession:
         self.process = None
         self.output_queue = queue.Queue()
         
+    def _get_env(self):
+        """Prepare environment with portable runtimes"""
+        from utils.compiler_manager import RUNTIME_CONFIG, get_runtime_root
+        
+        env = os.environ.copy()
+        
+        # Add portable bin paths to PATH
+        bin_paths = []
+        for lang in RUNTIME_CONFIG:
+            root = get_runtime_root(lang)
+            if root:
+                bin_path = Path(root) / RUNTIME_CONFIG[lang]['bin_path']
+                if bin_path.exists():
+                    bin_paths.append(str(bin_path.absolute()))
+                
+                # Special case for Python Scripts (for pip)
+                if lang == 'python':
+                    scripts_path = Path(root) / "Scripts"
+                    if scripts_path.exists():
+                        bin_paths.append(str(scripts_path.absolute()))
+        
+        if bin_paths:
+            env["PATH"] = os.pathsep.join(bin_paths) + os.pathsep + env.get("PATH", "")
+            
+        # Special environment variables
+        go_root = get_runtime_root('go')
+        if go_root:
+            env['GOROOT'] = go_root
+            # Set GOPATH to a stable location in the compiler directory
+            compiler_dir = Path(go_root).parent
+            env['GOPATH'] = str((compiler_dir / "gopath").absolute())
+            env['GOCACHE'] = str((compiler_dir / "gocache").absolute())
+            
+        return env
+
     def execute(self, command):
         """Execute a command and return the output"""
         try:
@@ -53,14 +89,15 @@ class TerminalSession:
                     'cwd': self.working_dir
                 }
             
-            # Execute command using PowerShell
+            # Execute command using PowerShell with custom environment
             result = subprocess.run(
                 ['powershell', '-NoProfile', '-Command', command],
                 cwd=self.working_dir,
                 capture_output=True,
                 text=True,
                 timeout=120,  # 2 minute timeout for long operations like pip install
-                shell=False
+                shell=False,
+                env=self._get_env()
             )
             
             output = result.stdout

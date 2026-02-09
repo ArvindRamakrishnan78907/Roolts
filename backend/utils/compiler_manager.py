@@ -30,6 +30,16 @@ RUNTIME_CONFIG = {
             'python': 'python.exe'
         }
     },
+    'nodejs': {
+        'url': "https://nodejs.org/dist/v18.17.0/node-v18.17.0-win-x64.zip",
+        'zip_name': "node_portable.zip",
+        'extract_dir': "nodejs",
+        'bin_path': "node-v18.17.0-win-x64",
+        'executables': {
+            'node': 'node.exe',
+            'npm': 'npm.cmd'
+        }
+    },
     'java': {
         'url': "https://github.com/adoptium/temurin21-binaries/releases/download/jdk-21.0.2%2B13/OpenJDK21U-jdk_x64_windows_hotspot_21.0.2_13.zip",
         'zip_name': "openjdk.zip",
@@ -108,6 +118,62 @@ def setup_runtime(lang_key):
         print(f"[{lang_key}] Failed to setup runtime: {e}")
         return None
 
+def enable_python_pip(python_dir):
+    """
+    Enables pip for the portable embeddable Python distribution.
+    1. Modifies the ._pth file to enable site-packages.
+    2. Downloads and runs get-pip.py if pip is missing.
+    """
+    python_dir = Path(python_dir).resolve()
+    
+    # 1. Update ._pth file
+    # Find the pythonXX._pth file
+    pth_files = list(python_dir.glob("python*._pth"))
+    if pth_files:
+        pth_file = pth_files[0]
+        try:
+            with open(pth_file, 'r') as f:
+                content = f.read()
+            
+            # Uncomment 'import site' if it exists and is commented
+            if "#import site" in content:
+                print(f"[python] Enabling site-packages in {pth_file.name}")
+                content = content.replace("#import site", "import site")
+                with open(pth_file, 'w') as f:
+                    f.write(content)
+        except Exception as e:
+            print(f"[python] Warning: Failed to modify ._pth file: {e}")
+
+    # 2. Install pip if missing
+    python_exe = (python_dir / "python.exe").resolve()
+    scripts_dir = (python_dir / "Scripts").resolve()
+    pip_exe = (scripts_dir / "pip.exe").resolve()
+    
+    if not pip_exe.exists():
+        print("[python] pip not found. Installing pip...")
+        get_pip_path = (RUNTIMES_DIR / "get-pip.py").resolve()
+        try:
+            if not get_pip_path.exists():
+                print("[python] Downloading get-pip.py...")
+                url = "https://bootstrap.pypa.io/get-pip.py"
+                r = requests.get(url)
+                with open(get_pip_path, 'wb') as f:
+                    f.write(r.content)
+            
+            # Run get-pip.py using absolute paths
+            print(f"[python] Running get-pip.py with {python_exe}...")
+            # We don't set cwd here to avoid confusion; usage of absolute paths handles it.
+            # But pip installation might detail into site-packages relative to executable location.
+            # Python's behavior relative to executable should be fine if we run it directly.
+            subprocess.run([str(python_exe), str(get_pip_path)], cwd=str(python_dir), check=True, capture_output=True)
+            print("[python] pip installed successfully.")
+        except Exception as e:
+            print(f"[python] Failed to install pip: {e}")
+            if hasattr(e, 'stderr') and e.stderr:
+                print(f"Error output: {e.stderr.decode() if isinstance(e.stderr, bytes) else e.stderr}")
+            elif hasattr(e, 'output') and e.output:
+                 print(f"Output: {e.output.decode() if isinstance(e.output, bytes) else e.output}")
+
 def setup_all_runtimes():
     """Sets up all portable runtimes and adds them to PATH."""
     paths = []
@@ -115,6 +181,15 @@ def setup_all_runtimes():
         path = setup_runtime(lang)
         if path:
             paths.append(path)
+            
+            # Additional setup for Python
+            if lang == 'python':
+                # The bin path for python IS the extract path (plus Scripts)
+                enable_python_pip(path)
+                scripts_path = str((Path(path) / "Scripts").absolute())
+                if scripts_path not in os.environ["PATH"]:
+                    os.environ["PATH"] = scripts_path + os.pathsep + os.environ["PATH"]
+
             if path not in os.environ["PATH"]:
                 os.environ["PATH"] = path + os.pathsep + os.environ["PATH"]
     return paths

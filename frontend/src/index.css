@@ -1808,22 +1808,26 @@ body {
 }
 
 /* Text Highlighting */
-.highlight-yellow {
-  background-color: rgba(255, 255, 0, 0.3);
-  border-bottom: 2px solid rgba(255, 255, 0, 0.6);
+.monaco-editor .highlight-yellow {
+  background-color: rgba(255, 255, 0, 0.45) !important;
+  border-bottom: 2px solid rgba(255, 255, 0, 0.9) !important;
+  z-index: 20;
 }
 
-.highlight-green {
-  background-color: rgba(0, 255, 0, 0.2);
-  border-bottom: 2px solid rgba(0, 255, 0, 0.5);
+.monaco-editor .highlight-green {
+  background-color: rgba(0, 255, 0, 0.35) !important;
+  border-bottom: 2px solid rgba(0, 255, 0, 0.8) !important;
+  z-index: 20;
 }
 
-.highlight-blue {
-  background-color: rgba(0, 100, 255, 0.2);
-  border-bottom: 2px solid rgba(0, 100, 255, 0.5);
+.monaco-editor .highlight-blue {
+  background-color: rgba(0, 100, 255, 0.35) !important;
+  border-bottom: 2px solid rgba(0, 100, 255, 0.8) !important;
+  z-index: 20;
 }
 
-.highlight-pink {
-  background-color: rgba(255, 0, 255, 0.2);
-  border-bottom: 2px solid rgba(255, 0, 255, 0.5);
+.monaco-editor .highlight-pink {
+  background-color: rgba(255, 0, 255, 0.35) !important;
+  border-bottom: 2px solid rgba(255, 0, 255, 0.8) !important;
+  z-index: 20;
 }

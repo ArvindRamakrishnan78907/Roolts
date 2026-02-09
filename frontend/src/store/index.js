@@ -98,7 +98,8 @@ export default App;
                             content,
                             language,
                             modified: false,
-                            highlights: []
+                            highlights: [],
+                            drawings: []
                         }
                     ],
                     openFiles: [...state.openFiles, id],
@@ -115,7 +116,7 @@ export default App;
             addHighlight: (fileId, highlight) => set((state) => ({
                 files: state.files.map((file) =>
                     file.id === fileId
-                        ? { ...file, highlights: [...(file.highlights || []), highlight] }
+                        ? { ...file, highlights: [...(file.highlights || []), highlight], modified: true }
                         : file
                 )
             })),
@@ -126,10 +127,18 @@ export default App;
                         const newHighlights = (file.highlights || []).map(h =>
                             h.id === highlight.id ? highlight : h
                         );
-                        return { ...file, highlights: newHighlights };
+                        return { ...file, highlights: newHighlights, modified: true };
                     }
                     return file;
                 })
+            })),
+
+            removeHighlight: (fileId, highlightId) => set((state) => ({
+                files: state.files.map((file) =>
+                    file.id === fileId
+                        ? { ...file, highlights: (file.highlights || []).filter(h => h.id !== highlightId), modified: true }
+                        : file
+                )
             })),
 
             // Drawing Actions
@@ -401,6 +410,8 @@ export const useSettingsStore = create(
             experimental: {
                 scribble: false
             },
+            scribblePenSize: 3,
+            scribbleEraserSize: 15,
 
             setTheme: (theme) => set({ theme }),
             setBackgroundImage: (image) => set({ backgroundImage: image }),
@@ -418,6 +429,9 @@ export const useSettingsStore = create(
             })),
             toggleExperimental: (key) => set((state) => ({
                 experimental: { ...state.experimental, [key]: !state.experimental[key] }
+            })),
+            setScribbleSize: (type, size) => set((state) => ({
+                [type === 'pen' ? 'scribblePenSize' : 'scribbleEraserSize']: size
             })),
             resetSettings: () => set({
                 theme: 'vs-dark',
@@ -439,7 +453,9 @@ export const useSettingsStore = create(
                 },
                 experimental: {
                     scribble: false
-                }
+                },
+                scribblePenSize: 3,
+                scribbleEraserSize: 15
             })
         }),
         {

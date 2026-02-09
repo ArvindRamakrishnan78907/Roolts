@@ -65,9 +65,11 @@ def execute_code():
             with open(file_path, 'w', encoding='utf-8') as f:
                 f.write(code)
             
-            # Execute Node.js
+            # Execute Node.js using portable runtime if available
+            node_exe = get_executable_path('nodejs', 'node')
+            
             result = subprocess.run(
-                ['node', file_path],
+                [node_exe, file_path],
                 cwd=temp_dir,
                 capture_output=True,
                 text=True,
@@ -233,9 +235,10 @@ def execute_code():
                 # Add bin to path just in case
                 go_env['PATH'] = os.path.join(go_root, 'bin') + os.pathsep + go_env.get('PATH', '')
             
-            # Use temp_dir for GOPATH and GOCACHE to ensure portability/writability
-            go_env['GOPATH'] = os.path.join(temp_dir, 'gopath')
-            go_env['GOCACHE'] = os.path.join(temp_dir, 'gocache')
+            # Use stable paths in the compiler directory for GOPATH and GOCACHE to ensure persistence
+            compiler_dir = Path(go_root).parent
+            go_env['GOPATH'] = str((compiler_dir / "gopath").absolute())
+            go_env['GOCACHE'] = str((compiler_dir / "gocache").absolute())
             go_env['GOTOOLCHAIN'] = 'local'
             
             # Use 'go build' to follow the pattern
