@@ -46,6 +46,7 @@ import {
     FiMapPin,
     FiLayout,
     FiMic,
+    FiMicOff,
     FiGrid,
     FiMessageSquare
 } from 'react-icons/fi';
@@ -88,7 +89,7 @@ import SyncManager from './components/SyncManager';
 
 // File Explorer Component
 function FileExplorer() {
-    const { files, activeFileId, openFile, deleteFile, renameFile } = useFileStore();
+    const { files, currentActiveFileId, openFile, deleteFile, renameFile } = useFileStore();
     const { openModal } = useUIStore();
     const [renamingId, setRenamingId] = useState(null);
     const [contextMenu, setContextMenu] = useState(null);
@@ -261,7 +262,7 @@ function FileExplorer() {
             {files.map((file) => (
                 <div
                     key={file.id}
-                    className={`file-item ${activeFileId === file.id ? 'file-item--active' : ''}`}
+                    className={`file-item ${currentActiveFileId === file.id ? 'file-item--active' : ''}`}
                     onClick={() => openFile(file.id)}
                     onContextMenu={(e) => handleContextMenu(e, file.id)}
                 >
@@ -536,7 +537,7 @@ function TerminalPanel() {
 
 // Editor Tabs Component
 function EditorTabs() {
-    const { files, openFiles, activeFileId, setActiveFile, closeFile } = useFileStore();
+    const { files, openFiles, currentActiveFileId, setActiveFile, closeFile } = useFileStore();
     const { showOutput, setShowOutput } = useExecutionStore();
 
     const openFilesData = openFiles.map((id) => files.find((f) => f.id === id)).filter(Boolean);
@@ -546,7 +547,7 @@ function EditorTabs() {
             {openFilesData.map((file) => (
                 <button
                     key={file.id}
-                    className={`editor-tab ${activeFileId === file.id && !showOutput ? 'editor-tab--active' : ''}`}
+                    className={`editor-tab ${currentActiveFileId === file.id && !showOutput ? 'editor-tab--active' : ''}`}
                     onClick={() => { setActiveFile(file.id); setShowOutput(false); }}
                 >
                     <span>{file.name}</span>
@@ -658,9 +659,9 @@ function OutputPanel() {
 
 // Monaco Editor Component
 function CodeEditor() {
-    const { files, activeFileId, updateFileContent } = useFileStore();
+    const { files, currentActiveFileId, updateFileContent } = useFileStore();
     const { showOutput } = useExecutionStore();
-    const activeFile = files.find((f) => f.id === activeFileId);
+    const activeFile = files.find((f) => f.id === currentActiveFileId);
     // Editor options derived from settings... (implied context, but I will just return the overlay structure)
 
     // IMPORTANT: All hooks must be called before any early returns
@@ -1625,8 +1626,8 @@ function LearningPanel() {
     const [chatQuery, setChatQuery] = useState('');
     const [isChatting, setIsChatting] = useState(false);
     const { addNotification } = useUIStore();
-    const { files, activeFileId } = useFileStore();
-    const activeFile = files.find((f) => f.id === activeFileId);
+    const { files, currentActiveFileId } = useFileStore();
+    const activeFile = files.find((f) => f.id === currentActiveFileId);
 
     const handleChat = async (e) => {
         if (e) e.preventDefault();
@@ -1886,7 +1887,7 @@ function LearningPanel() {
 // Right Panel Component
 function RightPanel({ style, editorMinimized }) {
     const { rightPanelOpen, rightPanelTab, setRightPanelTab, toggleRightPanel, rightPanelExpanded, toggleRightPanelExpanded } = useUIStore();
-    const { files, activeFileId } = useFileStore();
+    const { files, currentActiveFileId } = useFileStore();
 
     if (!rightPanelOpen) {
         return (
@@ -1944,7 +1945,7 @@ function RightPanel({ style, editorMinimized }) {
                 </button>
             </div>
 
-            {rightPanelTab === 'preview' && <WebPreview files={files} activeFileId={activeFileId} />}
+            {rightPanelTab === 'preview' && <WebPreview files={files} activeFileId={currentActiveFileId} />}
             {rightPanelTab === 'github' && <GitHubPanel />}
             {rightPanelTab === 'social' && <SocialPanel />}
             {rightPanelTab === 'learn' && <LearningPanel />}
@@ -2205,10 +2206,10 @@ function DeploymentModalComponent() {
 
 // Status Bar Component
 function StatusBar() {
-    const { files, activeFileId } = useFileStore();
+    const { files, currentActiveFileId } = useFileStore();
     const { isConnected } = useGitHubStore();
     const { compilers } = useExecutionStore();
-    const activeFile = files.find((f) => f.id === activeFileId);
+    const activeFile = files.find((f) => f.id === currentActiveFileId);
 
     return (
         <div className="status-bar">
@@ -2533,7 +2534,9 @@ function App() {
         sidebarOpen, toggleSidebar, openModal, addNotification, editorMinimized, toggleEditorMinimized,
         rightPanelOpen, toggleRightPanel, setRightPanelTab
     } = useUIStore();
-    const { files, activeFileId, markFileSaved, fetchFileContent } = useFileStore();
+    const {
+        files, currentActiveFileId, markFileSaved, fetchFileContent, openFiles, setActiveFile, closeFile, updateFileContent, openFile, deleteFile, renameFile
+    } = useFileStore();
     const { isExecuting, setExecuting, setOutput, setError, setExecutionTime, addToHistory, setShowOutput } = useExecutionStore();
     const { setConnected, setRepositories, isConnected } = useGitHubStore();
     const [terminalOpen, setTerminalOpen] = useState(false);
@@ -2544,7 +2547,7 @@ function App() {
     const [isResizing, setIsResizing] = useState(null); // 'right' or 'terminal'
     const mainRef = React.useRef(null);
 
-    const activeFile = files.find(f => f.id === activeFileId);
+    const activeFile = files.find(f => f.id === currentActiveFileId);
 
     // Auto-refresh active file if outdated
     useEffect(() => {
@@ -2741,11 +2744,11 @@ function App() {
 
     // Fetch file content when active file changes if it's empty/synced
     React.useEffect(() => {
-        if (activeFileId) {
+        if (currentActiveFileId) {
             const { fetchFileContent } = useFileStore.getState();
-            fetchFileContent(activeFileId);
+            fetchFileContent(currentActiveFileId);
         }
-    }, [activeFileId]);
+    }, [currentActiveFileId]);
 
     const handleSave = async () => {
         // STRICT MODE: Save to container ONLY
@@ -2754,21 +2757,20 @@ function App() {
             return;
         }
 
-        const activeFile = getActiveFile();
         if (activeFile) {
             try {
                 await fileSyncService.pushFile(activeFile.path, activeFile.content);
                 console.log('[App] File synced to container:', activeFile.path);
 
                 // Only mark saved locally if backend success
-                markFileSaved(activeFileId);
+                markFileSaved(currentActiveFileId);
                 addNotification({ type: 'success', message: 'File saved to Docker' });
             } catch (error) {
                 console.error('[App] Failed to sync file to container:', error);
                 addNotification({ type: 'error', message: `Failed to save to Docker: ${error.message}` });
             }
         }
-    }, [activeFileId, addNotification, markFileSaved]);
+    };
 
     const handleRunCode = React.useCallback(async () => {
         // activeFile is a derived value, so we should get it from state or depend on it
@@ -2855,7 +2857,7 @@ function App() {
         }
 
         setExecuting(false);
-    }, [activeFile, activeFileId, addNotification, rightPanelOpen, toggleRightPanel, setRightPanelTab, setExecuting, setOutput, setError, setExecutionTime, setShowOutput, addToHistory]);
+    }, [activeFile, addNotification, rightPanelOpen, toggleRightPanel, setRightPanelTab, setExecuting, setOutput, setError, setExecutionTime, setShowOutput, addToHistory]);
 
     // Helper function to open Notes app in a new window
     const openNotesWindow = React.useCallback(() => {
