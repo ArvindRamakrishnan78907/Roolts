@@ -56,7 +56,9 @@ class FileSyncService {
 
         try {
             const envId = backgroundEnvManager.getDefaultEnvId();
-            if (!envId) return;
+            if (!envId) {
+                return;
+            }
 
             // Get file list from container
             const result = await virtualEnvService.listFiles(envId, '/workspace');
@@ -185,7 +187,9 @@ class FileSyncService {
             }
 
             const envId = backgroundEnvManager.getDefaultEnvId();
-            if (!envId) return false;
+            if (!envId) {
+                return false;
+            }
 
             const containerOldPath = oldPath.startsWith('/workspace')
                 ? oldPath
@@ -217,7 +221,9 @@ class FileSyncService {
             }
 
             const envId = backgroundEnvManager.getDefaultEnvId();
-            if (!envId) return false;
+            if (!envId) {
+                return false;
+            }
 
             const containerPath = path.startsWith('/workspace')
                 ? path
@@ -245,7 +251,9 @@ class FileSyncService {
             }
 
             const envId = backgroundEnvManager.getDefaultEnvId();
-            if (!envId) return false;
+            if (!envId) {
+                return false;
+            }
 
             const containerPath = filePath.startsWith('/workspace')
                 ? filePath
@@ -272,7 +280,9 @@ class FileSyncService {
             }
 
             const envId = backgroundEnvManager.getDefaultEnvId();
-            if (!envId) return null;
+            if (!envId) {
+                return null;
+            }
 
             const containerPath = filePath.startsWith('/workspace')
                 ? filePath

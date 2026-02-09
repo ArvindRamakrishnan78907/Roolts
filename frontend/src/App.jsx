@@ -89,7 +89,7 @@ import SyncManager from './components/SyncManager';
 
 // File Explorer Component
 function FileExplorer() {
-    const { files, currentActiveFileId, openFile, deleteFile, renameFile } = useFileStore();
+    const { files, activeFileId, openFile, deleteFile, renameFile } = useFileStore();
     const { openModal } = useUIStore();
     const [renamingId, setRenamingId] = useState(null);
     const [contextMenu, setContextMenu] = useState(null);
@@ -262,7 +262,7 @@ function FileExplorer() {
             {files.map((file) => (
                 <div
                     key={file.id}
-                    className={`file-item ${currentActiveFileId === file.id ? 'file-item--active' : ''}`}
+                    className={`file-item ${activeFileId === file.id ? 'file-item--active' : ''}`}
                     onClick={() => openFile(file.id)}
                     onContextMenu={(e) => handleContextMenu(e, file.id)}
                 >
@@ -537,7 +537,7 @@ function TerminalPanel() {
 
 // Editor Tabs Component
 function EditorTabs() {
-    const { files, openFiles, currentActiveFileId, setActiveFile, closeFile } = useFileStore();
+    const { files, openFiles, activeFileId, setActiveFile, closeFile } = useFileStore();
     const { showOutput, setShowOutput } = useExecutionStore();
 
     const openFilesData = openFiles.map((id) => files.find((f) => f.id === id)).filter(Boolean);
@@ -547,7 +547,7 @@ function EditorTabs() {
             {openFilesData.map((file) => (
                 <button
                     key={file.id}
-                    className={`editor-tab ${currentActiveFileId === file.id && !showOutput ? 'editor-tab--active' : ''}`}
+                    className={`editor-tab ${activeFileId === file.id && !showOutput ? 'editor-tab--active' : ''}`}
                     onClick={() => { setActiveFile(file.id); setShowOutput(false); }}
                 >
                     <span>{file.name}</span>
@@ -659,16 +659,13 @@ function OutputPanel() {
 
 // Monaco Editor Component
 function CodeEditor() {
-    const { files, currentActiveFileId, updateFileContent } = useFileStore();
+    const { files, activeFileId, updateFileContent } = useFileStore();
     const { showOutput } = useExecutionStore();
-    const activeFile = files.find((f) => f.id === currentActiveFileId);
+    const activeFile = files.find((f) => f.id === activeFileId);
     // Editor options derived from settings... (implied context, but I will just return the overlay structure)
 
     // IMPORTANT: All hooks must be called before any early returns
     const { theme, format, features, backgroundImage, backgroundOpacity } = useSettingsStore();
-
-    // Enable auto-save to Docker container
-    useAutoSave();
 
     // Enable auto-save to Docker container
     useAutoSave();
@@ -1626,8 +1623,8 @@ function LearningPanel() {
     const [chatQuery, setChatQuery] = useState('');
     const [isChatting, setIsChatting] = useState(false);
     const { addNotification } = useUIStore();
-    const { files, currentActiveFileId } = useFileStore();
-    const activeFile = files.find((f) => f.id === currentActiveFileId);
+    const { files, activeFileId } = useFileStore();
+    const activeFile = files.find((f) => f.id === activeFileId);
 
     const handleChat = async (e) => {
         if (e) e.preventDefault();
@@ -1887,7 +1884,7 @@ function LearningPanel() {
 // Right Panel Component
 function RightPanel({ style, editorMinimized }) {
     const { rightPanelOpen, rightPanelTab, setRightPanelTab, toggleRightPanel, rightPanelExpanded, toggleRightPanelExpanded } = useUIStore();
-    const { files, currentActiveFileId } = useFileStore();
+    const { files, activeFileId } = useFileStore();
 
     if (!rightPanelOpen) {
         return (
@@ -1945,7 +1942,7 @@ function RightPanel({ style, editorMinimized }) {
                 </button>
             </div>
 
-            {rightPanelTab === 'preview' && <WebPreview files={files} activeFileId={currentActiveFileId} />}
+            {rightPanelTab === 'preview' && <WebPreview files={files} activeFileId={activeFileId} />}
             {rightPanelTab === 'github' && <GitHubPanel />}
             {rightPanelTab === 'social' && <SocialPanel />}
             {rightPanelTab === 'learn' && <LearningPanel />}
@@ -2206,10 +2203,10 @@ function DeploymentModalComponent() {
 
 // Status Bar Component
 function StatusBar() {
-    const { files, currentActiveFileId } = useFileStore();
+    const { files, activeFileId } = useFileStore();
     const { isConnected } = useGitHubStore();
     const { compilers } = useExecutionStore();
-    const activeFile = files.find((f) => f.id === currentActiveFileId);
+    const activeFile = files.find((f) => f.id === activeFileId);
 
     return (
         <div className="status-bar">
@@ -2535,7 +2532,7 @@ function App() {
         rightPanelOpen, toggleRightPanel, setRightPanelTab
     } = useUIStore();
     const {
-        files, currentActiveFileId, markFileSaved, fetchFileContent, openFiles, setActiveFile, closeFile, updateFileContent, openFile, deleteFile, renameFile
+        files, activeFileId, markFileSaved, fetchFileContent, openFiles, setActiveFile, closeFile, updateFileContent, openFile, deleteFile, renameFile
     } = useFileStore();
     const { isExecuting, setExecuting, setOutput, setError, setExecutionTime, addToHistory, setShowOutput } = useExecutionStore();
     const { setConnected, setRepositories, isConnected } = useGitHubStore();
@@ -2547,7 +2544,7 @@ function App() {
     const [isResizing, setIsResizing] = useState(null); // 'right' or 'terminal'
     const mainRef = React.useRef(null);
 
-    const activeFile = files.find(f => f.id === currentActiveFileId);
+    const activeFile = files.find(f => f.id === activeFileId);
 
     // Auto-refresh active file if outdated
     useEffect(() => {
@@ -2744,11 +2741,11 @@ function App() {
 
     // Fetch file content when active file changes if it's empty/synced
     React.useEffect(() => {
-        if (currentActiveFileId) {
+        if (activeFileId) {
             const { fetchFileContent } = useFileStore.getState();
-            fetchFileContent(currentActiveFileId);
+            fetchFileContent(activeFileId);
         }
-    }, [currentActiveFileId]);
+    }, [activeFileId]);
 
     const handleSave = async () => {
         // STRICT MODE: Save to container ONLY
@@ -2763,7 +2760,7 @@ function App() {
                 console.log('[App] File synced to container:', activeFile.path);
 
                 // Only mark saved locally if backend success
-                markFileSaved(currentActiveFileId);
+                markFileSaved(activeFileId);
                 addNotification({ type: 'success', message: 'File saved to Docker' });
             } catch (error) {
                 console.error('[App] Failed to sync file to container:', error);
