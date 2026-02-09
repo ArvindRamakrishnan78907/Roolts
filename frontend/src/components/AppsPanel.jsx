@@ -1,12 +1,25 @@
-import React from 'react';
-import { FiGrid, FiActivity, FiCpu, FiMessageSquare, FiMusic, FiPackage, FiSettings, FiCamera, FiChrome, FiMap, FiPhone, FiMail } from 'react-icons/fi';
+import React, { useState } from 'react';
+import { FiGrid, FiActivity, FiMessageSquare, FiCode, FiPhone, FiCpu, FiMusic, FiPackage, FiSettings, FiCamera, FiChrome, FiMap, FiMail } from 'react-icons/fi';
+import CallingPanel from './CallingPanel';
 
-const AppsPanel = () => {
-    // Android-style app configuration
+const AppsPanel = ({ onOpenApp }) => {
+    const [activeAppId, setActiveAppId] = useState(null);
+
+    // Built-in apps
     const apps = [
         { id: 'notes', name: 'Notes', icon: <FiMessageSquare />, color: '#f1c40f' },
-        { id: 'calc', name: 'Calc', icon: <FiActivity />, color: '#e74c3c' },
+        { id: 'calc', name: 'Calculator', icon: <FiActivity />, color: '#e74c3c' },
+        { id: 'quickpython', name: 'Quick Python', icon: <FiCode />, color: '#3498db' },
+        { id: 'calls', name: 'Calls', icon: <FiPhone />, color: '#2ecc71' },
     ];
+
+    // Get current time
+    const now = new Date();
+    const timeString = now.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true });
+
+    if (activeAppId === 'calls') {
+        return <CallingPanel onBack={() => setActiveAppId(null)} />;
+    }
 
     return (
         <div className="panel-content" style={{ padding: '20px' }}>
@@ -14,7 +27,7 @@ const AppsPanel = () => {
                 <h3 style={{ margin: 0, display: 'flex', alignItems: 'center', fontSize: '18px' }}>
                     Apps
                 </h3>
-                <span style={{ fontSize: '12px', opacity: 0.6 }}>12:45 PM</span>
+                <span style={{ fontSize: '12px', opacity: 0.6 }}>{timeString}</span>
             </div>
 
             <div style={{
@@ -31,6 +44,13 @@ const AppsPanel = () => {
                         cursor: 'pointer',
                         transition: 'transform 0.1s'
                     }}
+                        onClick={() => {
+                            if (app.id === 'calls') {
+                                setActiveAppId('calls');
+                            } else {
+                                onOpenApp && onOpenApp(app.id);
+                            }
+                        }}
                         onMouseEnter={(e) => e.currentTarget.style.transform = 'scale(1.05)'}
                         onMouseLeave={(e) => e.currentTarget.style.transform = 'scale(1)'}
                     >
@@ -38,7 +58,7 @@ const AppsPanel = () => {
                             width: '48px',
                             height: '48px',
                             backgroundColor: app.color,
-                            borderRadius: '12px', // Squircle shape
+                            borderRadius: '12px',
                             display: 'flex',
                             alignItems: 'center',
                             justifyContent: 'center',
@@ -63,14 +83,8 @@ const AppsPanel = () => {
                     </div>
                 ))}
             </div>
-
-            {/* Android-style navigation dots */}
-            <div style={{ display: 'flex', justifyContent: 'center', marginTop: '30px', gap: '6px' }}>
-                <div style={{ width: '6px', height: '6px', borderRadius: '50%', backgroundColor: 'var(--text-primary)', opacity: 0.8 }}></div>
-                <div style={{ width: '6px', height: '6px', borderRadius: '50%', backgroundColor: 'var(--text-primary)', opacity: 0.3 }}></div>
-            </div>
         </div>
     );
-};
+}
 
 export default AppsPanel;

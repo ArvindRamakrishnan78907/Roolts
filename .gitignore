@@ -38,7 +38,5 @@ coverage/
 *.jar
 .gradle/
 build/
-
-
 # anas-solution
 /anas-solution

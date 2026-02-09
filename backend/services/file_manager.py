@@ -149,7 +149,6 @@ class FileManager:
             if not is_valid:
                 return False, message
             
-            
             # Encode content to base64 to safely pass through shell
             content_b64 = base64.b64encode(content_bytes).decode('ascii')
             

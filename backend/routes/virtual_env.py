@@ -723,10 +723,17 @@ def rename_file(env_id):
         new_path = data['new_path']
         
         # Ensure paths start with /workspace
-        if not old_path.startswith('/workspace'):
-            old_path = f'/workspace/{old_path}'
-        if not new_path.startswith('/workspace'):
-            new_path = f'/workspace/{new_path}'
+        clean_old = old_path.strip().lstrip('/')
+        if clean_old.startswith('workspace/') or clean_old == 'workspace':
+            old_path = '/' + clean_old
+        else:
+            old_path = f'/workspace/{clean_old}'
+            
+        clean_new = new_path.strip().lstrip('/')
+        if clean_new.startswith('workspace/') or clean_new == 'workspace':
+            new_path = '/' + clean_new
+        else:
+            new_path = f'/workspace/{clean_new}'
             
         command = f'mv "{old_path}" "{new_path}"'
         
@@ -749,7 +756,6 @@ def rename_file(env_id):
         return jsonify({'error': str(e)}), 500
 
 
-
 @virtual_env_bp.route('/environments/<int:env_id>/mkdir', methods=['POST'])
 @require_auth
 def create_directory(env_id):
@@ -770,8 +776,11 @@ def create_directory(env_id):
         dir_path = data['path']
         
         # Ensure path starts with /workspace
-        if not dir_path.startswith('/workspace'):
-            dir_path = f'/workspace/{dir_path}'
+        clean_path = dir_path.strip().lstrip('/')
+        if clean_path.startswith('workspace/') or clean_path == 'workspace':
+            dir_path = '/' + clean_path
+        else:
+            dir_path = f'/workspace/{clean_path}'
         
         # Create directory
         success, error = file_manager.create_directory(

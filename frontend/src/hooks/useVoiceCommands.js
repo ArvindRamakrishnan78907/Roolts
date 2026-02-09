@@ -1,10 +1,9 @@
-
 import { useState, useEffect, useCallback, useRef } from 'react';
 
 export const useVoiceCommands = (commands = {}) => {
     const [isListening, setIsListening] = useState(false);
     const [transcript, setTranscript] = useState('');
-    const [feedback, setFeedback] = useState(null); // { type: 'success' | 'error', message: '' }
+    const [feedback, setFeedback] = useState(null); // { type: 'success' | 'error' | 'info' | 'warning', message: '' }
     const [recognition, setRecognition] = useState(null);
     const commandsRef = useRef(commands);
 
@@ -14,7 +13,8 @@ export const useVoiceCommands = (commands = {}) => {
     }, [commands]);
 
     useEffect(() => {
-        const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+        const SpeechRecognition =
+            window.SpeechRecognition || window.webkitSpeechRecognition;
 
         if (SpeechRecognition) {
             const recognitionInstance = new SpeechRecognition();
@@ -78,7 +78,7 @@ export const useVoiceCommands = (commands = {}) => {
             try {
                 recognition.start();
             } catch (e) {
-                console.error("Failed to start recognition", e);
+                console.error('Failed to start recognition', e);
             }
         }
     }, [isListening, recognition]);
@@ -88,6 +88,6 @@ export const useVoiceCommands = (commands = {}) => {
         transcript,
         feedback,
         toggleListening,
-        isSupported: !!recognition
+        isSupported: !!recognition,
     };
 };
