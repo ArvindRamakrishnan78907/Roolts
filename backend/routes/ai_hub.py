@@ -3,7 +3,7 @@ Multi-AI Chat Routes
 Provides endpoints for the AI Hub with smart model routing
 """
 
-
+import os
 from flask import Blueprint, jsonify, request
 
 from routes.auth import get_current_user, require_auth
@@ -14,8 +14,9 @@ ai_hub_bp = Blueprint('ai_hub', __name__)
 
 
 def get_user_ai_service():
-    """Get AI service configured with user's API keys."""
+    """Get AI service configured with user's API keys or env vars as fallback."""
     user = get_current_user()
+    user_keys = {}
     
     if user:
         user_keys = {
@@ -26,8 +27,17 @@ def get_user_ai_service():
         }
         # Filter out None values
         user_keys = {k: v for k, v in user_keys.items() if v}
-    else:
-        user_keys = {}
+    
+    # If no user keys, fall back to environment variables
+    if not user_keys:
+        user_keys = {
+            'gemini': os.getenv('GEMINI_API_KEY'),
+            'claude': os.getenv('CLAUDE_API_KEY'),
+            'deepseek': os.getenv('DEEPSEEK_API_KEY'),
+            'qwen': os.getenv('QWEN_API_KEY')
+        }
+        # Filter out None/empty/placeholder values
+        user_keys = {k: v for k, v in user_keys.items() if v and not v.startswith('your-')}
     
     return MultiAIService(user_keys)
 

@@ -7,10 +7,14 @@ from routes.auth import get_current_user
 ai_bp = Blueprint('ai', __name__)
 
 def get_ai_service():
-    """Get AI service configured with user's API keys."""
+    """Get AI service configured with user's API keys or env vars as fallback."""
     user = get_current_user()
     user_keys = {}
+    
+    print(f">>> get_ai_service - User logged in: {user is not None}")
+    
     if user:
+        # Use user's stored API keys if available
         user_keys = {
             'gemini': user.gemini_api_key,
             'claude': user.claude_api_key,
@@ -19,6 +23,22 @@ def get_ai_service():
         }
         # Filter out None values
         user_keys = {k: v for k, v in user_keys.items() if v}
+        print(f">>> Using user keys: {list(user_keys.keys())}")
+    
+    # If no user keys, fall back to environment variables
+    if not user_keys:
+        raw_deepseek = os.getenv('DEEPSEEK_API_KEY')
+        print(f">>> Reading DEEPSEEK_API_KEY from env: {raw_deepseek[:15] if raw_deepseek and len(raw_deepseek) > 15 else raw_deepseek}...")
+        
+        user_keys = {
+            'gemini': os.getenv('GEMINI_API_KEY'),
+            'claude': os.getenv('CLAUDE_API_KEY'),
+            'deepseek': raw_deepseek,
+            'qwen': os.getenv('QWEN_API_KEY')
+        }
+        # Filter out None/empty/placeholder values
+        user_keys = {k: v for k, v in user_keys.items() if v and not v.startswith('your-')}
+        print(f">>> After filter - Keys available: {list(user_keys.keys())}")
     
     return MultiAIService(user_keys)
 
@@ -389,8 +409,8 @@ def review_code():
     if not code:
         return jsonify({'error': 'Code is required'}), 400
     
-    # Initialize Multi-AI Service
-    service = MultiAIService()
+    # Initialize Multi-AI Service with environment API keys
+    service = get_ai_service()
     
     # Strict System Prompt for JSON Output
     system_prompt = (

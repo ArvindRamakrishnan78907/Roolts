@@ -1804,4 +1804,26 @@ body {
 
 .pulsing {
   animation: pulse-red 2s infinite;
+
+}
+
+/* Text Highlighting */
+.highlight-yellow {
+  background-color: rgba(255, 255, 0, 0.3);
+  border-bottom: 2px solid rgba(255, 255, 0, 0.6);
+}
+
+.highlight-green {
+  background-color: rgba(0, 255, 0, 0.2);
+  border-bottom: 2px solid rgba(0, 255, 0, 0.5);
+}
+
+.highlight-blue {
+  background-color: rgba(0, 100, 255, 0.2);
+  border-bottom: 2px solid rgba(0, 100, 255, 0.5);
+}
+
+.highlight-pink {
+  background-color: rgba(255, 0, 255, 0.2);
+  border-bottom: 2px solid rgba(255, 0, 255, 0.5);
 }

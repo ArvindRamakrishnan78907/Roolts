@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { FiChevronLeft, FiDelete, FiExternalLink } from 'react-icons/fi';
 
 const CalculatorApp = ({ onBack, isWindowed, onPopOut }) => {
@@ -137,38 +137,7 @@ const CalculatorApp = ({ onBack, isWindowed, onPopOut }) => {
         setWaitingForOperand(true);
     };
 
-    useEffect(() => {
-        const handleKeyDown = (event) => {
-            const { key } = event;
 
-            if (/\d/.test(key)) {
-                event.preventDefault();
-                inputNumber(key);
-            } else if (key === '.') {
-                event.preventDefault();
-                inputDecimal();
-            } else if (key === 'Enter' || key === '=') {
-                event.preventDefault();
-                calculate();
-            } else if (key === 'Backspace') {
-                event.preventDefault();
-                backspace();
-            } else if (key === 'Escape') {
-                event.preventDefault();
-                clear();
-            } else if (key === '+' || key === '-' || key === '*' || key === '/') {
-                event.preventDefault();
-                const opMap = { '*': '×', '/': '÷' };
-                performOperation(opMap[key] || key);
-            } else if (key === '%') {
-                event.preventDefault();
-                percent();
-            }
-        };
-
-        window.addEventListener('keydown', handleKeyDown);
-        return () => window.removeEventListener('keydown', handleKeyDown);
-    }, [display, waitingForOperand, previousValue, operation, history]);
 
     return (
         <div style={{

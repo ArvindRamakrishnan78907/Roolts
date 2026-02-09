@@ -37,18 +37,32 @@ const AppsPanel = ({ onOpenApp }) => {
                 justifyContent: 'center'
             }}>
                 {apps.map(app => (
-                    <div key={app.id} style={{
-                        display: 'flex',
-                        flexDirection: 'column',
-                        alignItems: 'center',
-                        cursor: 'pointer',
-                        transition: 'transform 0.1s'
-                    }}
+                    <div key={app.id}
+                        role="button"
+                        tabIndex={0}
+                        style={{
+                            display: 'flex',
+                            flexDirection: 'column',
+                            alignItems: 'center',
+                            cursor: 'pointer',
+                            transition: 'transform 0.1s',
+                            outline: 'none'
+                        }}
                         onClick={() => {
                             if (app.id === 'calls') {
                                 setActiveAppId('calls');
                             } else {
                                 onOpenApp && onOpenApp(app.id);
+                            }
+                        }}
+                        onKeyDown={(e) => {
+                            if (e.key === 'Enter' || e.key === ' ') {
+                                e.preventDefault();
+                                if (app.id === 'calls') {
+                                    setActiveAppId('calls');
+                                } else {
+                                    onOpenApp && onOpenApp(app.id);
+                                }
                             }
                         }}
                         onMouseEnter={(e) => e.currentTarget.style.transform = 'scale(1.05)'}

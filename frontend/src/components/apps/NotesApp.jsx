@@ -83,6 +83,14 @@ const NotesApp = ({ onBack, isWindowed }) => {
 
     const formats = ['font', 'size', 'header', 'bold', 'italic', 'underline', 'color', 'background', 'list', 'bullet', 'link', 'image', 'video', 'align', 'width', 'height', 'style'];
 
+    // Helper function for keyboard accessibility on buttons
+    const handleButtonKeyDown = (e, callback) => {
+        if (e.key === 'Enter' || e.key === ' ') {
+            e.preventDefault();
+            callback();
+        }
+    };
+
     useEffect(() => {
         const loaded = loadNotesFromStorage();
         setNotes(loaded.sort((a, b) => new Date(b.updatedAt) - new Date(a.updatedAt)));
@@ -156,7 +164,7 @@ const NotesApp = ({ onBack, isWindowed }) => {
                 if (range.length === 0) {
                     const [leaf, offset] = quill.getLeaf(range.index);
                     if (leaf && leaf.domNode && (leaf.domNode.tagName === 'IMG' || leaf.domNode.tagName === 'VIDEO')) {
-                        setSelectedImage(range);
+                        setSelectedImage({ index: range.index, length: 1 });
                         return;
                     }
                 }
@@ -166,8 +174,33 @@ const NotesApp = ({ onBack, isWindowed }) => {
             setSelectedImage(null);
         };
 
+        // Also listen for clicks directly on images/videos
+        const handleClick = (e) => {
+            const target = e.target;
+            if (target.tagName === 'IMG' || target.tagName === 'VIDEO') {
+                try {
+                    const blot = Quill.find(target);
+                    if (blot) {
+                        const index = quill.getIndex(blot);
+                        const range = { index, length: 1 };
+                        setSelectedImage(range);
+                        // Set selection to highlight the image
+                        setTimeout(() => quill.setSelection(index, 1), 0);
+                    }
+                } catch (e) {
+                    console.error('Error selecting image:', e);
+                }
+            }
+        };
+
+        const editorElement = quill.root;
+        editorElement.addEventListener('click', handleClick);
         quill.on('selection-change', handler);
-        return () => quill.off('selection-change', handler);
+
+        return () => {
+            editorElement.removeEventListener('click', handleClick);
+            quill.off('selection-change', handler);
+        };
     }, [quillRef.current]);
 
     const deleteSelectedMedia = () => {
@@ -293,22 +326,61 @@ const NotesApp = ({ onBack, isWindowed }) => {
 
         element.querySelectorAll('img').forEach(img => {
             img.style.cssText = 'max-width: 100%; height: auto; display: block; margin: 10px 0;';
+            img.crossOrigin = 'anonymous';
+        });
+
+        // Remove video elements (can't appear in PDF)
+        element.querySelectorAll('video').forEach(video => {
+            const placeholder = document.createElement('div');
+            placeholder.style.cssText = 'padding: 20px; background: #f0f0f0; border: 1px solid #ccc; text-align: center; margin: 10px 0; border-radius: 4px;';
+            placeholder.textContent = '[Video content - not available in PDF]';
+            video.replaceWith(placeholder);
         });
 
         document.body.appendChild(element);
 
         try {
-            const canvas = await html2canvas(element, { scale: 2, useCORS: true, backgroundColor: '#ffffff' });
+            // Wait for all images to load
+            const images = element.querySelectorAll('img');
+            await Promise.all(Array.from(images).map(img => {
+                if (img.complete) return Promise.resolve();
+                return new Promise((resolve) => {
+                    img.onload = resolve;
+                    img.onerror = resolve;
+                });
+            }));
+
+            const canvas = await html2canvas(element, {
+                scale: 2,
+                useCORS: true,
+                allowTaint: true,
+                backgroundColor: '#ffffff',
+                logging: false
+            });
             const imgData = canvas.toDataURL('image/png');
             const pdf = new jsPDF('p', 'mm', 'a4');
             const imgWidth = 210;
+            const pageHeight = 297;
             const imgHeight = (canvas.height * imgWidth) / canvas.width;
 
-            pdf.addImage(imgData, 'PNG', 0, 0, imgWidth, imgHeight);
+            let heightLeft = imgHeight;
+            let position = 0;
+
+            pdf.addImage(imgData, 'PNG', 0, position, imgWidth, imgHeight);
+            heightLeft -= pageHeight;
+
+            // Add extra pages if needed
+            while (heightLeft > 0) {
+                position = heightLeft - imgHeight;
+                pdf.addPage();
+                pdf.addImage(imgData, 'PNG', 0, position, imgWidth, imgHeight);
+                heightLeft -= pageHeight;
+            }
+
             pdf.save(`${editorTitle || 'note'}.pdf`);
         } catch (err) {
-            console.error(err);
-            alert('Export failed');
+            console.error('PDF export error:', err);
+            alert('Export failed. Please try again.');
         } finally {
             document.body.removeChild(element);
             setShowExportMenu(false);
@@ -318,21 +390,45 @@ const NotesApp = ({ onBack, isWindowed }) => {
     const exportAsWord = () => {
         if (!activeNote) return;
 
-        const htmlContent = `
-<!DOCTYPE html>
-<html xmlns:o='urn:schemas-microsoft-com:office:office' xmlns:w='urn:schemas-microsoft-com:office:word' xmlns='http://www.w3.org/TR/REC-html40'>
+        // Process content to handle videos (can't be embedded in Word)
+        let processedContent = editorContent;
+
+        // Replace video elements with placeholder text
+        const tempDiv = document.createElement('div');
+        tempDiv.innerHTML = processedContent;
+        tempDiv.querySelectorAll('video').forEach(video => {
+            const placeholder = document.createElement('p');
+            placeholder.style.cssText = 'padding: 15px; background: #f5f5f5; border: 1px dashed #999; text-align: center; color: #666; font-style: italic;';
+            placeholder.textContent = '[Video content - view in Notes app]';
+            video.replaceWith(placeholder);
+        });
+        processedContent = tempDiv.innerHTML;
+
+        const htmlContent = `<!DOCTYPE html>
+<html xmlns:v="urn:schemas-microsoft-com:vml" xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:w="urn:schemas-microsoft-com:office:word" xmlns="http://www.w3.org/TR/REC-html40">
 <head>
-<meta charset='utf-8'>
+<meta charset="utf-8">
+<meta name="ProgId" content="Word.Document">
+<meta name="Generator" content="Roolts Notes">
 <title>${editorTitle}</title>
+<!--[if gte mso 9]>
+<xml>
+<w:WordDocument>
+<w:View>Print</w:View>
+</w:WordDocument>
+</xml>
+<![endif]-->
 <style>
-body { font-family: Arial, sans-serif; padding: 20px; }
-img { max-width: 100%; height: auto; display: block; margin: 10px 0; }
-video { max-width: 100%; }
+@page { size: A4; margin: 2cm; }
+body { font-family: 'Calibri', Arial, sans-serif; font-size: 11pt; line-height: 1.5; }
+h1 { font-size: 18pt; margin-bottom: 12pt; color: #333; }
+img { max-width: 100%; height: auto; display: block; margin: 12pt 0; }
+p { margin: 0 0 6pt 0; }
 </style>
 </head>
 <body>
 <h1>${editorTitle}</h1>
-${editorContent}
+${processedContent}
 </body>
 </html>`;
 
@@ -386,9 +482,9 @@ ${editorContent}
             {/* Header */}
             <div style={{ display: 'flex', alignItems: 'center', padding: '8px 12px', borderBottom: '1px solid var(--border-color)', gap: '8px' }}>
                 {!isWindowed && onBack && (
-                    <button onClick={onBack} className="btn btn--ghost btn--icon" title="Back"><FiChevronLeft /></button>
+                    <button onClick={onBack} onKeyDown={(e) => handleButtonKeyDown(e, onBack)} className="btn btn--ghost btn--icon" title="Back"><FiChevronLeft /></button>
                 )}
-                <button onClick={() => setShowList(!showList)} className="btn btn--ghost btn--icon" title="Notes List"><FiList /></button>
+                <button onClick={() => setShowList(!showList)} onKeyDown={(e) => handleButtonKeyDown(e, () => setShowList(!showList))} className="btn btn--ghost btn--icon" title="Notes List"><FiList /></button>
                 <input
                     type="text"
                     value={editorTitle}
@@ -397,12 +493,12 @@ ${editorContent}
                     placeholder="Note title..."
                     style={{ flex: 1, border: 'none', background: 'transparent', fontSize: '15px', fontWeight: 600, outline: 'none', color: 'inherit' }}
                 />
-                <button onClick={() => quillRef.current?.getEditor()?.history?.undo()} className="btn btn--ghost btn--icon" title="Undo (Ctrl+Z)">↶</button>
-                <button onClick={() => quillRef.current?.getEditor()?.history?.redo()} className="btn btn--ghost btn--icon" title="Redo (Ctrl+Y)">↷</button>
+                <button onClick={() => quillRef.current?.getEditor()?.history?.undo()} onKeyDown={(e) => handleButtonKeyDown(e, () => quillRef.current?.getEditor()?.history?.undo())} className="btn btn--ghost btn--icon" title="Undo (Ctrl+Z)">↶</button>
+                <button onClick={() => quillRef.current?.getEditor()?.history?.redo()} onKeyDown={(e) => handleButtonKeyDown(e, () => quillRef.current?.getEditor()?.history?.redo())} className="btn btn--ghost btn--icon" title="Redo (Ctrl+Y)">↷</button>
                 <div style={{ width: '1px', height: '20px', background: 'var(--border-color)', margin: '0 4px' }}></div>
-                <button onClick={handleImage} className="btn btn--ghost btn--icon" title="Add Image"><FiImage /></button>
-                <button onClick={() => setShowCamera(true)} className="btn btn--ghost btn--icon" title="Camera"><FiCamera /></button>
-                <button onClick={handleVideo} className="btn btn--ghost btn--icon" title="Add Video"><FiVideo /></button>
+                <button onClick={handleImage} onKeyDown={(e) => handleButtonKeyDown(e, handleImage)} className="btn btn--ghost btn--icon" title="Add Image"><FiImage /></button>
+                <button onClick={() => setShowCamera(true)} onKeyDown={(e) => handleButtonKeyDown(e, () => setShowCamera(true))} className="btn btn--ghost btn--icon" title="Camera"><FiCamera /></button>
+                <button onClick={handleVideo} onKeyDown={(e) => handleButtonKeyDown(e, handleVideo)} className="btn btn--ghost btn--icon" title="Add Video"><FiVideo /></button>
                 <button
                     onMouseDown={(e) => e.preventDefault()}
                     onClick={deleteSelectedMedia}
@@ -419,24 +515,24 @@ ${editorContent}
                     <FiTrash2 />
                 </button>
                 <div style={{ position: 'relative' }}>
-                    <button onClick={() => setShowExportMenu(!showExportMenu)} className="btn btn--ghost btn--icon" title="Export/Import"><FiDownload /></button>
+                    <button onClick={() => setShowExportMenu(!showExportMenu)} onKeyDown={(e) => handleButtonKeyDown(e, () => setShowExportMenu(!showExportMenu))} className="btn btn--ghost btn--icon" title="Export/Import"><FiDownload /></button>
                     {showExportMenu && (
                         <div style={{ position: 'absolute', top: '100%', right: 0, marginTop: '4px', background: 'var(--bg-secondary)', border: '1px solid var(--border-color)', borderRadius: '6px', boxShadow: '0 2px 8px rgba(0,0,0,0.15)', zIndex: 100, minWidth: '140px' }}>
-                            <button onClick={exportAsPDF} style={{ width: '100%', padding: '8px 12px', border: 'none', background: 'transparent', color: 'inherit', textAlign: 'left', cursor: 'pointer', fontSize: '13px' }}>
+                            <button onClick={exportAsPDF} onKeyDown={(e) => handleButtonKeyDown(e, exportAsPDF)} style={{ width: '100%', padding: '8px 12px', border: 'none', background: 'transparent', color: 'inherit', textAlign: 'left', cursor: 'pointer', fontSize: '13px' }}>
                                 📄 Export as PDF
                             </button>
-                            <button onClick={exportAsWord} style={{ width: '100%', padding: '8px 12px', border: 'none', background: 'transparent', color: 'inherit', textAlign: 'left', cursor: 'pointer', fontSize: '13px' }}>
+                            <button onClick={exportAsWord} onKeyDown={(e) => handleButtonKeyDown(e, exportAsWord)} style={{ width: '100%', padding: '8px 12px', border: 'none', background: 'transparent', color: 'inherit', textAlign: 'left', cursor: 'pointer', fontSize: '13px' }}>
                                 📝 Export as Word
                             </button>
                             <div style={{ height: '1px', background: 'var(--border-color)', margin: '4px 0' }}></div>
-                            <button onClick={importFile} style={{ width: '100%', padding: '8px 12px', border: 'none', background: 'transparent', color: 'inherit', textAlign: 'left', cursor: 'pointer', fontSize: '13px' }}>
+                            <button onClick={importFile} onKeyDown={(e) => handleButtonKeyDown(e, importFile)} style={{ width: '100%', padding: '8px 12px', border: 'none', background: 'transparent', color: 'inherit', textAlign: 'left', cursor: 'pointer', fontSize: '13px' }}>
                                 📂 Import File
                             </button>
                         </div>
                     )}
                 </div>
-                <button onClick={createNote} className="btn btn--ghost btn--icon" title="New Note"><FiPlus /></button>
-                <button onClick={deleteNote} className="btn btn--ghost btn--icon" title="Delete" style={{ color: 'var(--warning)' }}><FiTrash2 /></button>
+                <button onClick={createNote} onKeyDown={(e) => handleButtonKeyDown(e, createNote)} className="btn btn--ghost btn--icon" title="New Note"><FiPlus /></button>
+                <button onClick={deleteNote} onKeyDown={(e) => handleButtonKeyDown(e, deleteNote)} className="btn btn--ghost btn--icon" title="Delete" style={{ color: 'var(--warning)' }}><FiTrash2 /></button>
             </div>
 
             {/* Notes List */}
@@ -478,7 +574,7 @@ ${editorContent}
                     <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', flexDirection: 'column', color: 'var(--text-muted)' }}>
                         <div style={{ fontSize: '48px', marginBottom: '16px', opacity: 0.3 }}>📝</div>
                         <p style={{ marginBottom: '16px' }}>No notes yet</p>
-                        <button onClick={createNote} className="btn btn--primary"><FiPlus /> Create Note</button>
+                        <button onClick={createNote} onKeyDown={(e) => handleButtonKeyDown(e, createNote)} className="btn btn--primary"><FiPlus /> Create Note</button>
                     </div>
                 )}
             </div>
@@ -489,10 +585,10 @@ ${editorContent}
                     <div style={{ background: 'var(--bg-primary)', padding: '20px', borderRadius: '12px', width: '90%', maxWidth: '500px' }}>
                         <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '16px' }}>
                             <span style={{ fontWeight: 600, fontSize: '16px' }}>Take Photo</span>
-                            <button onClick={() => setShowCamera(false)} className="btn btn--ghost btn--icon"><FiX /></button>
+                            <button onClick={() => setShowCamera(false)} onKeyDown={(e) => handleButtonKeyDown(e, () => setShowCamera(false))} className="btn btn--ghost btn--icon"><FiX /></button>
                         </div>
                         <Webcam audio={false} ref={webcamRef} screenshotFormat="image/jpeg" style={{ width: '100%', borderRadius: '8px' }} />
-                        <button onClick={captureSnapshot} className="btn btn--primary" style={{ width: '100%', marginTop: '16px', padding: '12px' }}>
+                        <button onClick={captureSnapshot} onKeyDown={(e) => handleButtonKeyDown(e, captureSnapshot)} className="btn btn--primary" style={{ width: '100%', marginTop: '16px', padding: '12px' }}>
                             <FiCamera style={{ marginRight: '8px' }} /> Capture
                         </button>
                     </div>

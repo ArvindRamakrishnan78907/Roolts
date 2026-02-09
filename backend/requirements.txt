@@ -35,3 +35,7 @@ pyyaml>=6.0.0
 # Production Server
 gunicorn>=21.2.0
 
+
+# Real-time Communication
+flask-socketio>=5.3.6
+eventlet>=0.33.3

@@ -220,6 +220,10 @@ class DeepSeekProvider(AIProvider):
             'max_tokens': 4096
         }
         
+        # Debug: Log the API key being used (masked for security)
+        key_preview = f"{self.api_key[:8]}...{self.api_key[-4:]}" if len(self.api_key) > 12 else "TOO_SHORT"
+        print(f">>> DeepSeek API Call - Using key: {key_preview}")
+        
         try:
             response = requests.post(
                 f"{self.base_url}/chat/completions",
@@ -227,6 +231,11 @@ class DeepSeekProvider(AIProvider):
                 json=data
             )
             result = response.json()
+            
+            # Debug: Log the response status
+            print(f">>> DeepSeek API Response Status: {response.status_code}")
+            if response.status_code != 200:
+                print(f">>> DeepSeek API Error Response: {result}")
             
             if 'choices' in result and result['choices']:
                 text = result['choices'][0]['message']['content']
@@ -482,6 +491,15 @@ class MultiAIService:
         """
         user_api_keys = user_api_keys or {}
         
+        # Debug: Log what keys are being passed
+        print(f">>> MultiAIService init - Received keys: {list(user_api_keys.keys())}")
+        for provider, key in user_api_keys.items():
+            if key:
+                preview = f"{key[:8]}...{key[-4:]}" if len(key) > 12 else "SHORT"
+                print(f">>> {provider}: {preview}")
+            else:
+                print(f">>> {provider}: None/Empty")
+        
         self.providers = {
             'gemini': GeminiProvider(user_api_keys.get('gemini')),
             'claude': ClaudeProvider(user_api_keys.get('claude')),
@@ -492,6 +510,8 @@ class MultiAIService:
         # Determine which models are available
         available = [name for name, provider in self.providers.items() 
                     if provider.is_configured()]
+        
+        print(f">>> MultiAIService - Available models: {available}")
         
         self.selector = AISelector(available)
     

@@ -7,9 +7,11 @@ import os
 from flask import Flask, jsonify, request
 from flask_cors import CORS
 from dotenv import load_dotenv
+from pathlib import Path
 
-# Load environment variables
-load_dotenv()
+# Load environment variables from .env file in the same directory as app.py
+env_path = Path(__file__).parent / '.env'
+load_dotenv(dotenv_path=env_path)
 
 # Import database models
 from models import db, init_db
@@ -133,15 +135,118 @@ def create_app():
 # Create the app instance
 app = create_app()
 
+# Initialize SocketIO
+from flask_socketio import SocketIO, emit, join_room, leave_room
+
+socketio = SocketIO(app, cors_allowed_origins="*", async_mode='eventlet')
+
+# Socket Events
+@socketio.on('connect')
+def handle_connect():
+    print(f"Client connected: {request.sid}")
+
+@socketio.on('disconnect')
+def handle_disconnect():
+    print(f"Client disconnected: {request.sid}")
+
+@socketio.on('join-room')
+def handle_join_room(data):
+    room = data.get('roomId')
+    username = data.get('username')
+    join_room(room)
+    print(f"{username} joined room {room}")
+    emit('user-joined', {'username': username, 'sid': request.sid}, to=room, include_self=False)
+
+@socketio.on('signal')
+def handle_signal(data):
+    # Relay WebRTC signals (offer, answer, candidate) to the specific peer
+    target_sid = data.get('target')
+    if target_sid:
+        emit('signal', {
+            'signal': data.get('signal'),
+            'sender': request.sid
+        }, room=target_sid)
+
+@socketio.on('request-control')
+def handle_request_control(data):
+    room = data.get('roomId')
+    emit('request-control', {'requester': request.sid, 'username': data.get('username')}, to=room, include_self=False)
+
+@socketio.on('grant-control')
+def handle_grant_control(data):
+    target_sid = data.get('target')
+    if target_sid:
+        emit('grant-control', {'granted': True, 'granter': request.sid}, room=target_sid)
+
+@socketio.on('revoke-control')
+def handle_revoke_control(data):
+    room = data.get('roomId')
+    emit('revoke-control', {}, to=room, include_self=False)
+
+@socketio.on('code-change')
+def handle_code_change(data):
+    room = data.get('roomId')
+    # Broadcast code changes to everyone else in the room
+    emit('code-change', data, to=room, include_self=False)
+
+@socketio.on('cursor-move')
+def handle_cursor_move(data):
+    room = data.get('roomId')
+    emit('cursor-move', data, to=room, include_self=False)
+
+@socketio.on('chat-message')
+def handle_chat_message(data):
+    room = data.get('roomId')
+    emit('chat-message', data, to=room, include_self=False)
+
+@socketio.on('track-toggle')
+def handle_track_toggle(data):
+    room = data.get('roomId')
+    emit('track-toggle', data, to=room, include_self=False)
+
+@socketio.on('leave-room')
+def handle_leave_room(data):
+    room = data.get('roomId')
+    if room:
+        leave_room(room)
+        emit('user-left', {'sid': request.sid}, to=room, include_self=False)
+
+# Remote control events
+@socketio.on('remote-mouse-move')
+def handle_remote_mouse_move(data):
+    target_sid = data.get('target')
+    if target_sid:
+        emit('remote-mouse-move', data, room=target_sid)
+
+@socketio.on('remote-click')
+def handle_remote_click(data):
+    target_sid = data.get('target')
+    if target_sid:
+        emit('remote-click', data, room=target_sid)
+
+@socketio.on('remote-keypress')
+def handle_remote_keypress(data):
+    target_sid = data.get('target')
+    if target_sid:
+        emit('remote-keypress', data, room=target_sid)
+
+@socketio.on('remote-scroll')
+def handle_remote_scroll(data):
+    target_sid = data.get('target')
+    if target_sid:
+        emit('remote-scroll', data, room=target_sid)
+
+
 if __name__ == '__main__':
-    print("\n>>> Roolts Backend Starting...")
+    print("\n>>> Roolts Backend Starting (with SocketIO)...")
     print("=" * 50)
     print("API Server: http://localhost:5000")
-    print("API Docs:   http://localhost:5000/")
-    print("Auth:       /api/auth/*")
-    print("AI Hub:     /api/ai-hub/*")
+    print("SocketIO:   Enabled")
+    print("Features:   Video Calling, Remote Control, Chat")
     print("=" * 50)
     print("\nPress Ctrl+C to stop\n")
     
     port = int(os.environ.get("PORT", 5000))
-    app.run(host='0.0.0.0', port=port, debug=os.environ.get("FLASK_DEBUG", "True") == "True")
+    # Use socketio.run instead of app.run
+    socketio.run(app, host='0.0.0.0', port=port, debug=os.environ.get("FLASK_DEBUG", "True") == "True")
+

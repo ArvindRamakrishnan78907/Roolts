@@ -67,6 +67,19 @@ export default App;
                 };
             }),
 
+            closeFiles: (fileIds) => set((state) => {
+                const idsToClose = new Set(fileIds);
+                const newOpenFiles = state.openFiles.filter((id) => !idsToClose.has(id));
+                const newActiveFileId = idsToClose.has(state.activeFileId)
+                    ? newOpenFiles[newOpenFiles.length - 1] || null
+                    : state.activeFileId;
+
+                return {
+                    openFiles: newOpenFiles,
+                    activeFileId: newActiveFileId
+                };
+            }),
+
             updateFileContent: (fileId, content) => set((state) => ({
                 files: state.files.map((file) =>
                     file.id === fileId ? { ...file, content, modified: true } : file
@@ -84,20 +97,98 @@ export default App;
                             path: `/${name}`,
                             content,
                             language,
-                            modified: false
+                            modified: false,
+                            highlights: []
                         }
                     ],
                     openFiles: [...state.openFiles, id],
                     activeFileId: id
                 }));
+                const newFile = get().files.find(f => f.id === id);
+                if (newFile) {
+                    get().setActiveFile(id);
+                    get().openFile(id);
+                }
                 return id;
             },
+
+            addHighlight: (fileId, highlight) => set((state) => ({
+                files: state.files.map((file) =>
+                    file.id === fileId
+                        ? { ...file, highlights: [...(file.highlights || []), highlight] }
+                        : file
+                )
+            })),
+
+            updateHighlight: (fileId, highlight) => set((state) => ({
+                files: state.files.map((file) => {
+                    if (file.id === fileId) {
+                        const newHighlights = (file.highlights || []).map(h =>
+                            h.id === highlight.id ? highlight : h
+                        );
+                        return { ...file, highlights: newHighlights };
+                    }
+                    return file;
+                })
+            })),
+
+            // Drawing Actions
+            addDrawing: (fileId, drawing) => set((state) => ({
+                files: state.files.map((file) =>
+                    file.id === fileId
+                        ? { ...file, drawings: [...(file.drawings || []), drawing], modified: true }
+                        : file
+                )
+            })),
+
+            removeDrawing: (fileId, drawingId) => set((state) => ({
+                files: state.files.map((file) =>
+                    file.id === fileId
+                        ? { ...file, drawings: (file.drawings || []).filter(d => d.id !== drawingId), modified: true }
+                        : file
+                )
+            })),
+
+            clearDrawings: (fileId) => set((state) => ({
+                files: state.files.map((file) =>
+                    file.id === fileId
+                        ? { ...file, drawings: [], modified: true }
+                        : file
+                )
+            })),
+
+            removeLastDrawing: (fileId) => set((state) => ({
+                files: state.files.map((file) => {
+                    if (file.id === fileId) {
+                        const drawings = file.drawings || [];
+                        return { ...file, drawings: drawings.slice(0, -1), modified: true };
+                    }
+                    return file;
+                })
+            })),
+
+            removeHighlight: (fileId, highlightId) => set((state) => ({
+                files: state.files.map((file) =>
+                    file.id === fileId
+                        ? { ...file, highlights: (file.highlights || []).filter(h => h.id !== highlightId) }
+                        : file
+                )
+            })),
 
             deleteFile: (fileId) => set((state) => ({
                 files: state.files.filter((file) => file.id !== fileId),
                 openFiles: state.openFiles.filter((id) => id !== fileId),
                 activeFileId: state.activeFileId === fileId ? state.openFiles[0] || null : state.activeFileId
             })),
+
+            deleteFiles: (fileIds) => set((state) => {
+                const idsToDelete = new Set(fileIds);
+                return {
+                    files: state.files.filter((file) => !idsToDelete.has(file.id)),
+                    openFiles: state.openFiles.filter((id) => !idsToDelete.has(id)),
+                    activeFileId: idsToDelete.has(state.activeFileId) ? state.openFiles.filter(id => !idsToDelete.has(id))[0] || null : state.activeFileId
+                };
+            }),
 
             markFileSaved: (fileId) => set((state) => ({
                 files: state.files.map((file) =>
@@ -307,6 +398,9 @@ export const useSettingsStore = create(
                 livePreview: true,
                 vimMode: false
             },
+            experimental: {
+                scribble: false
+            },
 
             setTheme: (theme) => set({ theme }),
             setBackgroundImage: (image) => set({ backgroundImage: image }),
@@ -321,6 +415,9 @@ export const useSettingsStore = create(
             })),
             setFeature: (key, value) => set((state) => ({
                 features: { ...state.features, [key]: value }
+            })),
+            toggleExperimental: (key) => set((state) => ({
+                experimental: { ...state.experimental, [key]: !state.experimental[key] }
             })),
             resetSettings: () => set({
                 theme: 'vs-dark',
@@ -339,6 +436,9 @@ export const useSettingsStore = create(
                     autoSave: false,
                     livePreview: true,
                     vimMode: false
+                },
+                experimental: {
+                    scribble: false
                 }
             })
         }),

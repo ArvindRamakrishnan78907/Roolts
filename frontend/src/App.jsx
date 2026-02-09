@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import Editor from '@monaco-editor/react';
 import {
     FiFile,
@@ -45,9 +45,8 @@ import {
     FiBookmark,
     FiMapPin,
     FiLayout,
-    FiMic,
     FiGrid,
-    FiMessageSquare
+    FiFilePlus
 } from 'react-icons/fi';
 import ReactMarkdown from 'react-markdown';
 import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter';
@@ -71,23 +70,116 @@ import { notesService } from './services/notesService';
 import { executorService } from './services/executorService';
 import { terminalService } from './services/terminalService';
 import WebPreview from './components/WebPreview';
-import ReviewPanel from './components/ReviewPanel';
 import SnippetPanel from './components/SnippetPanel';
 import AppsPanel from './components/AppsPanel';
 import NotesApp from './components/apps/NotesApp';
 import CalculatorApp from './components/apps/CalculatorApp';
 import QuickPythonApp from './components/apps/QuickPythonApp';
-import PortfolioGenerator from './components/PortfolioGenerator';
-import DeploymentModal from './components/DeploymentModal';
-import { useVoiceCommands } from './hooks/useVoiceCommands';
+
 import SyncManager from './components/SyncManager';
+
+import RemoteControlOverlay from './components/RemoteControlOverlay';
+import ScribbleOverlay from './components/ScribbleOverlay';
+
+// Memoized File Item Component
+const FileItem = React.memo(({ file, activeFileId, renamingId, openFile, handleContextMenu, handleRename, deleteFile, setRenamingId }) => {
+    return (
+        <div
+            className={`file-item ${activeFileId === file.id ? 'file-item--active' : ''}`}
+            onClick={() => openFile(file.id)}
+            onContextMenu={(e) => handleContextMenu(e, file.id)}
+        >
+            <span className="file-item__icon">{getFileIcon(file.language)}</span>
+
+            {renamingId === file.id ? (
+                <input
+                    type="text"
+                    defaultValue={file.name}
+                    className="input"
+                    style={{
+                        padding: '2px 4px',
+                        height: '20px',
+                        fontSize: '13px',
+                        minWidth: 0,
+                        flex: 1
+                    }}
+                    autoFocus
+                    onClick={(e) => e.stopPropagation()}
+                    onBlur={(e) => handleRename(file.id, e.target.value)}
+                    onKeyDown={(e) => {
+                        if (e.key === 'Enter') handleRename(file.id, e.target.currentTarget.value);
+                        if (e.key === 'Escape') setRenamingId(null);
+                    }}
+                />
+            ) : (
+                <span className="file-item__name" style={{ flex: 1 }}>{file.name}</span>
+            )}
+
+
+
+            <button
+                className="btn btn--ghost btn--icon"
+                style={{ padding: '4px', opacity: 0.6, width: '24px', height: '24px' }}
+                onClick={(e) => {
+                    e.stopPropagation();
+                    deleteFile(file.id);
+                }}
+                title="Delete File"
+            >
+                <FiX size={12} />
+            </button>
+        </div>
+    );
+});
+
+// Memoized Editor Tab Component
+const EditorTab = React.memo(({ file, activeFileId, showOutput, setActiveFile, setShowOutput, closeFile, handleContextMenu }) => {
+    return (
+        <button
+            className={`editor-tab ${activeFileId === file.id && !showOutput ? 'editor-tab--active' : ''}`}
+            onClick={() => { setActiveFile(file.id); setShowOutput(false); }}
+            onContextMenu={(e) => handleContextMenu(e, file.id)}
+        >
+            <span>{file.name}</span>
+            <span
+                className="editor-tab__close"
+                onClick={(e) => {
+                    e.stopPropagation();
+                    closeFile(file.id);
+                }}
+            >
+                <FiX size={12} />
+            </span>
+        </button>
+    );
+});
+
+// Helper function to get file icon
+const getFileIcon = (language) => {
+    const icons = {
+        python: '🐍',
+        javascript: '📜',
+        java: '☕',
+        html: '🌐',
+        css: '🎨',
+        json: '📋',
+
+        c: <span style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', width: '20px' }}><FiCpu color="#A8B9CC" size={14} /></span>,
+        cpp: <span style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', width: '20px' }}><FiCpu color="#00599C" size={14} /></span>,
+        default: '📄'
+    };
+    return icons[language] || icons.default;
+};
 
 // File Explorer Component
 function FileExplorer() {
-    const { files, activeFileId, openFile, deleteFile, renameFile } = useFileStore();
-    const { openModal } = useUIStore();
+    const { files, activeFileId, openFile, deleteFile, renameFile, addFile, openFiles, closeFile, closeFiles, deleteFiles } = useFileStore();
+    // ... lines 177-304 ...
+    const { openModal, addNotification } = useUIStore();
     const [renamingId, setRenamingId] = useState(null);
     const [contextMenu, setContextMenu] = useState(null);
+    const fileInputRef = React.useRef(null);
+    const folderInputRef = React.useRef(null);
 
     // Close context menu on global click
     useEffect(() => {
@@ -96,33 +188,105 @@ function FileExplorer() {
         return () => window.removeEventListener('click', handleClick);
     }, []);
 
-    const getFileIcon = (language) => {
-        const icons = {
-            python: '🐍',
-            javascript: '📜',
-            java: '☕',
-            html: '🌐',
-            css: '🎨',
-            json: '📋',
-            c: 'C',
-            html: '🌐',
-            css: '🎨',
-            json: '📋',
-            c: <span style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', width: '20px' }}><SiC color="#A8B9CC" size={14} /></span>,
-            cpp: <span style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', width: '20px' }}><SiCplusplus color="#00599C" size={14} /></span>,
-            default: '📄'
+    // Get language from file extension
+    const getLanguageFromExtension = (filename) => {
+        const ext = filename.split('.').pop().toLowerCase();
+        const langMap = {
+            'py': 'python',
+            'js': 'javascript',
+            'jsx': 'javascript',
+            'ts': 'typescript',
+            'tsx': 'typescript',
+            'java': 'java',
+            'cpp': 'cpp',
+            'c': 'c',
+            'h': 'c',
+            'hpp': 'cpp',
+            'html': 'html',
+            'css': 'css',
+            'json': 'json',
+            'xml': 'xml',
+            'md': 'markdown',
+            'txt': 'plaintext',
+            'sql': 'sql',
+            'sh': 'shell',
+            'go': 'go',
+            'rs': 'rust',
+            'rb': 'ruby',
+            'php': 'php'
         };
-        return icons[language] || icons.default;
+        return langMap[ext] || 'plaintext';
     };
 
-    const handleRename = (fileId, newName) => {
+    // Handle file upload
+    const handleFileUpload = async (event) => {
+        const uploadedFiles = event.target.files;
+        if (!uploadedFiles || uploadedFiles.length === 0) return;
+
+        let uploadedCount = 0;
+        for (const file of uploadedFiles) {
+            try {
+                const content = await readFileContent(file);
+                const language = getLanguageFromExtension(file.name);
+                addFile(file.name, content, language);
+                uploadedCount++;
+            } catch (error) {
+                console.error(`Failed to read file ${file.name}:`, error);
+                addNotification({ type: 'error', message: `Failed to upload ${file.name}` });
+            }
+        }
+
+        if (uploadedCount > 0) {
+            addNotification({ type: 'success', message: `Uploaded ${uploadedCount} file(s)` });
+        }
+        // Reset input
+        event.target.value = '';
+    };
+
+    // Handle folder upload
+    const handleFolderUpload = async (event) => {
+        const uploadedFiles = event.target.files;
+        if (!uploadedFiles || uploadedFiles.length === 0) return;
+
+        let uploadedCount = 0;
+        for (const file of uploadedFiles) {
+            try {
+                const content = await readFileContent(file);
+                const language = getLanguageFromExtension(file.name);
+                // Use webkitRelativePath to preserve folder structure
+                const name = file.webkitRelativePath || file.name;
+                addFile(name, content, language);
+                uploadedCount++;
+            } catch (error) {
+                console.error(`Failed to read file ${file.name}:`, error);
+            }
+        }
+
+        if (uploadedCount > 0) {
+            addNotification({ type: 'success', message: `Uploaded ${uploadedCount} file(s) from folder` });
+        }
+        // Reset input
+        event.target.value = '';
+    };
+
+    // Read file content as text
+    const readFileContent = (file) => {
+        return new Promise((resolve, reject) => {
+            const reader = new FileReader();
+            reader.onload = (e) => resolve(e.target.result);
+            reader.onerror = (e) => reject(e);
+            reader.readAsText(file);
+        });
+    };
+
+    const handleRename = useCallback((fileId, newName) => {
         if (newName && newName.trim() !== '') {
             renameFile(fileId, newName);
         }
         setRenamingId(null);
-    };
+    }, [renameFile]);
 
-    const handleContextMenu = (e, fileId) => {
+    const handleContextMenu = useCallback((e, fileId) => {
         e.preventDefault();
         e.stopPropagation();
         setContextMenu({
@@ -130,71 +294,110 @@ function FileExplorer() {
             y: e.clientY,
             fileId
         });
-    };
+    }, []);
+
+    const handleCloseOthers = useCallback((fileId) => {
+        const filesToClose = openFiles.filter(id => id !== fileId);
+        if (filesToClose.length > 0) {
+            closeFiles(filesToClose);
+        }
+        setContextMenu(null);
+    }, [openFiles, closeFiles]);
+
+    const handleCloseBelow = useCallback((fileId) => {
+        const index = files.findIndex(f => f.id === fileId);
+        if (index !== -1 && index < files.length - 1) {
+            const filesBelow = files.slice(index + 1);
+            const idsToClose = filesBelow
+                .map(f => f.id)
+                .filter(id => openFiles.includes(id));
+
+            if (idsToClose.length > 0) {
+                closeFiles(idsToClose);
+            }
+        }
+        setContextMenu(null);
+    }, [files, openFiles, closeFiles]);
+
+    const handleDeleteBelow = useCallback((fileId) => {
+        const index = files.findIndex(f => f.id === fileId);
+        if (index !== -1 && index < files.length - 1) {
+            const filesBelow = files.slice(index + 1);
+            const idsToDelete = filesBelow.map(f => f.id);
+
+            if (idsToDelete.length > 0) {
+                if (window.confirm(`Are you sure you want to delete ${idsToDelete.length} files below?`)) {
+                    deleteFiles(idsToDelete);
+                }
+            }
+        }
+        setContextMenu(null);
+    }, [files, deleteFiles]);
 
     return (
         <div className="file-explorer" style={{ position: 'relative' }}>
+            {/* Hidden file inputs */}
+            <input
+                type="file"
+                ref={fileInputRef}
+                style={{ display: 'none' }}
+                multiple
+                onChange={handleFileUpload}
+                accept="*/*"
+            />
+            <input
+                type="file"
+                ref={folderInputRef}
+                style={{ display: 'none' }}
+                webkitdirectory=""
+                directory=""
+                multiple
+                onChange={handleFolderUpload}
+            />
+
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
                 <span style={{ fontSize: '11px', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
                     Files
                 </span>
-                <button
-                    className="btn btn--ghost btn--icon"
-                    onClick={() => openModal('newFile')}
-                    title="New File"
-                >
-                    <FiPlus />
-                </button>
-            </div>
-            {files.map((file) => (
-                <div
-                    key={file.id}
-                    className={`file-item ${activeFileId === file.id ? 'file-item--active' : ''}`}
-                    onClick={() => openFile(file.id)}
-                    onContextMenu={(e) => handleContextMenu(e, file.id)}
-                >
-                    <span className="file-item__icon">{getFileIcon(file.language)}</span>
-
-                    {renamingId === file.id ? (
-                        <input
-                            type="text"
-                            defaultValue={file.name}
-                            className="input"
-                            style={{
-                                padding: '2px 4px',
-                                height: '20px',
-                                fontSize: '13px',
-                                minWidth: 0,
-                                flex: 1
-                            }}
-                            autoFocus
-                            onClick={(e) => e.stopPropagation()}
-                            onBlur={(e) => handleRename(file.id, e.target.value)}
-                            onKeyDown={(e) => {
-                                if (e.key === 'Enter') handleRename(file.id, e.target.currentTarget.value);
-                                if (e.key === 'Escape') setRenamingId(null);
-                            }}
-                        />
-                    ) : (
-                        <span className="file-item__name" style={{ flex: 1 }}>{file.name}</span>
-                    )}
-
-                    {file.modified && (
-                        <FiCircle size={8} style={{ color: 'var(--warning)', flexShrink: 0, marginRight: '8px' }} />
-                    )}
-
+                <div style={{ display: 'flex', gap: '4px' }}>
                     <button
                         className="btn btn--ghost btn--icon"
-                        style={{ padding: '4px', opacity: 0.6, width: '24px', height: '24px' }}
-                        onClick={(e) => {
-                            e.stopPropagation();
-                            deleteFile(file.id);
-                        }}
-                        title="Delete File"
+                        onClick={() => fileInputRef.current?.click()}
+                        title="Open File"
+                        style={{ padding: '4px' }}
                     >
-                        <FiX size={12} />
+                        <FiFilePlus size={14} />
+                    </button>
+                    <button
+                        className="btn btn--ghost btn--icon"
+                        onClick={() => folderInputRef.current?.click()}
+                        title="Open Folder"
+                        style={{ padding: '4px' }}
+                    >
+                        <FiFolder size={14} />
+                    </button>
+                    <button
+                        className="btn btn--ghost btn--icon"
+                        onClick={() => openModal('newFile')}
+                        title="New File"
+                        style={{ padding: '4px' }}
+                    >
+                        <FiPlus size={14} />
                     </button>
                 </div>
+            </div>
+            {(files || []).map((file) => (
+                <FileItem
+                    key={file.id}
+                    file={file}
+                    activeFileId={activeFileId}
+                    renamingId={renamingId}
+                    openFile={openFile}
+                    handleContextMenu={handleContextMenu}
+                    handleRename={handleRename}
+                    deleteFile={deleteFile}
+                    setRenamingId={setRenamingId}
+                />
             ))}
 
             {/* Context Menu */}
@@ -210,10 +413,76 @@ function FileExplorer() {
                         borderRadius: '4px',
                         boxShadow: '0 4px 6px rgba(0, 0, 0, 0.3)',
                         padding: '4px 0',
-                        minWidth: '120px'
+                        minWidth: '150px'
                     }}
                     onClick={(e) => e.stopPropagation()}
                 >
+                    {openFiles.includes(contextMenu.fileId) && (
+                        <>
+                            <button
+                                style={{
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    width: '100%',
+                                    padding: '6px 12px',
+                                    border: 'none',
+                                    background: 'transparent',
+                                    color: 'var(--text-primary)',
+                                    cursor: 'pointer',
+                                    fontSize: '13px',
+                                    textAlign: 'left'
+                                }}
+                                className="context-menu-item"
+                                onClick={() => {
+                                    closeFile(contextMenu.fileId);
+                                    setContextMenu(null);
+                                }}
+                            >
+                                <FiX size={14} style={{ marginRight: '8px' }} />
+                                Close
+                            </button>
+                        </>
+                    )}
+                    <button
+                        style={{
+                            display: 'flex',
+                            alignItems: 'center',
+                            width: '100%',
+                            padding: '6px 12px',
+                            border: 'none',
+                            background: 'transparent',
+                            color: 'var(--text-primary)',
+                            cursor: 'pointer',
+                            fontSize: '13px',
+                            textAlign: 'left'
+                        }}
+                        className="context-menu-item"
+                        onClick={() => handleCloseOthers(contextMenu.fileId)}
+                    >
+                        <span style={{ marginRight: '8px' }}>🔄</span>
+                        Close Others
+                    </button>
+                    <button
+                        style={{
+                            display: 'flex',
+                            alignItems: 'center',
+                            width: '100%',
+                            padding: '6px 12px',
+                            border: 'none',
+                            background: 'transparent',
+                            color: 'var(--text-primary)',
+                            cursor: 'pointer',
+                            fontSize: '13px',
+                            textAlign: 'left'
+                        }}
+                        className="context-menu-item"
+                        onClick={() => handleDeleteBelow(contextMenu.fileId)}
+                    >
+                        <FiTrash2 size={14} style={{ marginRight: '8px' }} />
+                        Delete Below
+                    </button>
+                    <div style={{ height: '1px', background: 'var(--border-primary)', margin: '4px 0' }}></div>
+
                     <button
                         style={{
                             display: 'flex',
@@ -235,6 +504,29 @@ function FileExplorer() {
                     >
                         <FiEdit3 size={14} style={{ marginRight: '8px' }} />
                         Rename
+                    </button>
+
+                    <button
+                        style={{
+                            display: 'flex',
+                            alignItems: 'center',
+                            width: '100%',
+                            padding: '6px 12px',
+                            border: 'none',
+                            background: 'transparent',
+                            color: 'var(--danger)',
+                            cursor: 'pointer',
+                            fontSize: '13px',
+                            textAlign: 'left'
+                        }}
+                        className="context-menu-item"
+                        onClick={() => {
+                            deleteFile(contextMenu.fileId);
+                            setContextMenu(null);
+                        }}
+                    >
+                        <FiTrash2 size={14} style={{ marginRight: '8px' }} />
+                        Delete
                     </button>
                 </div>
             )}
@@ -400,33 +692,68 @@ function TerminalPanel() {
     );
 }
 
-// Editor Tabs Component
-function EditorTabs() {
-    const { files, openFiles, activeFileId, setActiveFile, closeFile } = useFileStore();
-    const { showOutput, setShowOutput } = useExecutionStore();
 
-    const openFilesData = openFiles.map((id) => files.find((f) => f.id === id)).filter(Boolean);
+
+// Editor Tabs Component
+function EditorTabs({ isScribbleMode, toggleScribbleMode, scribbleTool, setScribbleTool, scribbleColor, setScribbleColor, onUndo, onClear }) {
+    const { files, openFiles, activeFileId, setActiveFile, closeFile, closeFiles } = useFileStore();
+    const { showOutput, setShowOutput } = useExecutionStore();
+    const { experimental } = useSettingsStore();
+    const [contextMenu, setContextMenu] = useState(null);
+
+    const openFilesData = (Array.isArray(files) && Array.isArray(openFiles))
+        ? openFiles.map((id) => files.find((f) => f.id === id)).filter(Boolean)
+        : [];
+
+    // Close context menu on global click
+    useEffect(() => {
+        const handleClick = () => setContextMenu(null);
+        window.addEventListener('click', handleClick);
+        return () => window.removeEventListener('click', handleClick);
+    }, []);
+
+    const handleContextMenu = useCallback((e, fileId) => {
+        e.preventDefault();
+        e.stopPropagation();
+        setContextMenu({
+            x: e.clientX,
+            y: e.clientY,
+            fileId
+        });
+    }, []);
+
+    const handleCloseRight = (fileId) => {
+        const index = openFiles.indexOf(fileId);
+        if (index !== -1 && index < openFiles.length - 1) {
+            const filesToClose = openFiles.slice(index + 1);
+            if (filesToClose.length > 0) {
+                closeFiles(filesToClose);
+            }
+        }
+        setContextMenu(null);
+    };
+
+    const handleCloseOthers = (fileId) => {
+        const filesToClose = openFiles.filter(id => id !== fileId);
+        if (filesToClose.length > 0) {
+            closeFiles(filesToClose);
+        }
+        setContextMenu(null);
+    };
 
     return (
         <div className="editor-tabs">
             {openFilesData.map((file) => (
-                <button
+                <EditorTab
                     key={file.id}
-                    className={`editor-tab ${activeFileId === file.id && !showOutput ? 'editor-tab--active' : ''}`}
-                    onClick={() => { setActiveFile(file.id); setShowOutput(false); }}
-                >
-                    <span>{file.name}</span>
-                    {file.modified && <FiCircle size={8} style={{ color: 'var(--warning)' }} />}
-                    <span
-                        className="editor-tab__close"
-                        onClick={(e) => {
-                            e.stopPropagation();
-                            closeFile(file.id);
-                        }}
-                    >
-                        <FiX size={12} />
-                    </span>
-                </button>
+                    file={file}
+                    activeFileId={activeFileId}
+                    showOutput={showOutput}
+                    setActiveFile={setActiveFile}
+                    setShowOutput={setShowOutput}
+                    closeFile={closeFile}
+                    handleContextMenu={handleContextMenu}
+                />
             ))}
             <button
                 className={`editor-tab ${showOutput ? 'editor-tab--active' : ''}`}
@@ -436,7 +763,161 @@ function EditorTabs() {
                 <FiTerminal size={14} />
                 <span>Output</span>
             </button>
-        </div>
+
+            {/* Scribble Toggle in Tabs - Circular Icon Only - EXPERIMENTAL GATED */}
+            {experimental?.scribble && (
+                <button
+                    className={`btn btn--icon ${isScribbleMode ? 'btn--active' : ''}`}
+                    onClick={toggleScribbleMode}
+                    style={{
+                        border: '1px solid var(--border-primary)',
+                        borderRadius: '50%',
+                        marginLeft: 'auto',
+                        width: '28px',
+                        height: '28px',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        padding: 0
+                    }}
+                    title="Toggle Scribble Mode"
+                >
+                    <FiEdit3 size={14} />
+                </button>
+            )}
+
+            {/* Scribble Tools - Visible when Scribble Mode is Active - EXPERIMENTAL GATED */}
+            {experimental?.scribble && isScribbleMode && (
+                <div style={{ display: 'flex', alignItems: 'center', gap: '4px', marginLeft: '8px', paddingLeft: '8px', borderLeft: '1px solid var(--border-secondary)' }}>
+                    <button
+                        className={`btn btn--icon`}
+                        onClick={onUndo}
+                        title="Undo"
+                        style={{ width: '24px', height: '24px', padding: 0 }}
+                    >
+                        <FiRotateCcw size={12} />
+                    </button>
+
+                    <button
+                        className={`btn btn--icon ${scribbleTool === 'pen' ? 'btn--active' : ''}`}
+                        onClick={() => setScribbleTool('pen')}
+                        title="Pen"
+                        style={{ width: '24px', height: '24px', padding: 0, color: scribbleTool === 'pen' ? (scribbleColor || 'var(--accent-primary)') : 'inherit' }}
+                    >
+                        <FiEdit2 size={12} />
+                    </button>
+
+                    <input
+                        type="color"
+                        value={scribbleColor}
+                        onChange={(e) => { setScribbleColor(e.target.value); setScribbleTool('pen'); }}
+                        style={{ width: '20px', height: '20px', padding: 0, border: 'none', background: 'none', cursor: 'pointer' }}
+                        title="Color Picker"
+                    />
+
+                    <button
+                        className={`btn btn--icon ${scribbleTool === 'eraser' ? 'btn--active' : ''}`}
+                        onClick={() => setScribbleTool('eraser')}
+                        title="Eraser"
+                        style={{ width: '24px', height: '24px', padding: 0 }}
+                    >
+                        <FiX size={12} /> {/* Using X icon for Eraser */}
+                    </button>
+
+                    <button
+                        className={`btn btn--icon`}
+                        onClick={onClear}
+                        title="Clear All"
+                        style={{ width: '24px', height: '24px', padding: 0, color: 'var(--warning)' }}
+                    >
+                        <FiTrash2 size={12} />
+                    </button>
+                </div>
+            )}
+
+            {/* Context Menu */}
+            {
+                contextMenu && (
+                    <div
+                        style={{
+                            position: 'fixed',
+                            top: contextMenu.y,
+                            left: contextMenu.x,
+                            zIndex: 1000,
+                            backgroundColor: 'var(--bg-secondary)',
+                            border: '1px solid var(--border-primary)',
+                            borderRadius: '4px',
+                            boxShadow: '0 4px 6px rgba(0, 0, 0, 0.3)',
+                            padding: '4px 0',
+                            minWidth: '150px'
+                        }}
+                        onClick={(e) => e.stopPropagation()}
+                    >
+                        <button
+                            className="context-menu-item"
+                            onClick={() => handleCloseRight(contextMenu.fileId)}
+                            style={{
+                                display: 'flex',
+                                alignItems: 'center',
+                                width: '100%',
+                                padding: '6px 12px',
+                                border: 'none',
+                                background: 'transparent',
+                                color: 'var(--text-primary)',
+                                cursor: 'pointer',
+                                fontSize: '13px',
+                                textAlign: 'left'
+                            }}
+                        >
+                            <span style={{ marginRight: '8px' }}>➡️</span>
+                            Close to the Right
+                        </button>
+                        <button
+                            className="context-menu-item"
+                            onClick={() => handleCloseOthers(contextMenu.fileId)}
+                            style={{
+                                display: 'flex',
+                                alignItems: 'center',
+                                width: '100%',
+                                padding: '6px 12px',
+                                border: 'none',
+                                background: 'transparent',
+                                color: 'var(--text-primary)',
+                                cursor: 'pointer',
+                                fontSize: '13px',
+                                textAlign: 'left'
+                            }}
+                        >
+                            <span style={{ marginRight: '8px' }}>🔄</span>
+                            Close Others
+                        </button>
+                        <div style={{ height: '1px', background: 'var(--border-primary)', margin: '4px 0' }}></div>
+                        <button
+                            className="context-menu-item"
+                            onClick={() => {
+                                closeFile(contextMenu.fileId);
+                                setContextMenu(null);
+                            }}
+                            style={{
+                                display: 'flex',
+                                alignItems: 'center',
+                                width: '100%',
+                                padding: '6px 12px',
+                                border: 'none',
+                                background: 'transparent',
+                                color: 'var(--danger)',
+                                cursor: 'pointer',
+                                fontSize: '13px',
+                                textAlign: 'left'
+                            }}
+                        >
+                            <FiX size={14} style={{ marginRight: '8px' }} />
+                            Close Tab
+                        </button>
+                    </div>
+                )
+            }
+        </div >
     );
 }
 
@@ -522,16 +1003,157 @@ function OutputPanel() {
     );
 }
 
+import { collaborationService } from './services/collaborationService';
+
+// ... (existing imports)
+
 // Monaco Editor Component
-function CodeEditor() {
-    const { files, activeFileId, updateFileContent } = useFileStore();
+function CodeEditor({ isScribbleMode, scribbleTool = 'pen', scribbleColor = '#ff0000' }) {
+    const { files, activeFileId, updateFileContent, addHighlight, removeHighlight, updateHighlight, addDrawing, removeLastDrawing, clearDrawings } = useFileStore();
     const { showOutput } = useExecutionStore();
     const activeFile = files.find((f) => f.id === activeFileId);
-    // Editor options derived from settings... (implied context, but I will just return the overlay structure)
+    const { theme, format, features, experimental, backgroundImage, backgroundOpacity } = useSettingsStore();
 
-    // Editor options derived from settings... (implied context, but I will just return the overlay structure)
+    const editorRef = React.useRef(null);
+    const decorationsRef = React.useRef([]);
+    const decorationIdToHighlightId = React.useRef({});
+
+    // Synch decorations when file/highlights change
+    useEffect(() => {
+        if (editorRef.current && activeFile) {
+            const highlights = activeFile.highlights || [];
+            const newDecorations = highlights.map(h => ({
+                range: h.range,
+                options: {
+                    isWholeLine: false,
+                    className: `highlight-${h.color}`,
+                    hoverMessage: { value: 'Right Click to Remove Highlight' },
+                    stickiness: 1, // TrackedRangeStickiness.NeverGrowsWhenTypingAtEdges (1)
+                    zIndex: 10
+                }
+            }));
+
+            // Apply decorations
+            const oldDecorations = decorationsRef.current;
+            const newIds = editorRef.current.deltaDecorations(oldDecorations, newDecorations);
+            decorationsRef.current = newIds;
+
+            // Map new decoration IDs to highlight IDs
+            const newMap = {};
+            newIds.forEach((decId, index) => {
+                if (highlights[index]) {
+                    newMap[decId] = highlights[index].id;
+                }
+            });
+            decorationIdToHighlightId.current = newMap;
+        }
+    }, [activeFile, activeFile?.highlights]);
+
+    // Sync Store with Editor Ranges (Stickiness)
+    useEffect(() => {
+        if (!editorRef.current || !activeFile) return;
+
+        const sync = () => {
+            const model = editorRef.current.getModel();
+            const map = decorationIdToHighlightId.current;
+            const ids = decorationsRef.current;
+
+            ids.forEach(decId => {
+                const range = model.getDecorationRange(decId);
+                const highlightId = map[decId];
+                if (range && highlightId) {
+                    const original = activeFile.highlights.find(h => h.id === highlightId);
+                    if (original && (original.range.startLineNumber !== range.startLineNumber ||
+                        original.range.startColumn !== range.startColumn ||
+                        original.range.endLineNumber !== range.endLineNumber ||
+                        original.range.endColumn !== range.endColumn)) {
+                        updateHighlight(activeFileId, { ...original, range });
+                    }
+                }
+            });
+        };
+
+        const disposable = editorRef.current.onDidChangeModelContent(() => {
+            // Deboune sync
+            setTimeout(sync, 500);
+        });
+
+        return () => disposable.dispose();
+    }, [activeFile, activeFileId, updateHighlight]);
+
+    const handleEditorDidMount = (editor, monaco) => {
+        editorRef.current = editor;
+
+        // "Highlight..." Context Menu
+        editor.addAction({
+            id: 'open-highlight-modal',
+            label: 'Highlight...',
+            contextMenuGroupId: 'navigation',
+            contextMenuOrder: 1.5,
+            run: (ed) => {
+                const selection = ed.getSelection();
+                if (selection && !selection.isEmpty()) {
+                    window.dispatchEvent(new CustomEvent('open-highlight-modal', {
+                        detail: { selection, fileId: activeFileId }
+                    }));
+                }
+            }
+        });
+
+        // "Remove Highlight" Context Menu
+        editor.addAction({
+            id: 'remove-highlight',
+            label: 'Remove Highlight',
+            contextMenuGroupId: 'navigation',
+            contextMenuOrder: 1.6,
+            run: (ed) => {
+                const position = ed.getPosition();
+                const model = ed.getModel();
+                // Get decorations at position
+                const decorations = model.getDecorationsInRange(new monaco.Range(position.lineNumber, position.column, position.lineNumber, position.column));
+
+                // Find visible highlights
+                const highlightDec = decorations.find(d =>
+                    d.options.className && d.options.className.startsWith('highlight-')
+                );
+
+                if (highlightDec) {
+                    const highlightId = decorationIdToHighlightId.current[highlightDec.id];
+                    if (highlightId) {
+                        removeHighlight(activeFileId, highlightId);
+                        // Also proactively remove overlapping ones visually just in case
+                        decorations.forEach(d => {
+                            if (d.options.className && d.options.className.startsWith('highlight-') && d.id !== highlightDec.id) {
+                                const hId = decorationIdToHighlightId.current[d.id];
+                                if (hId) removeHighlight(activeFileId, hId);
+                            }
+                        });
+                    }
+                }
+            }
+        });
+    };
+
+
+
+
+
+    // Add Collaboration Listeners
+    useEffect(() => {
+        collaborationService.onCodeChange = (data) => {
+            // Only update if it matches the current file
+            // In a real app, we'd check fileId, but for now we update active file
+            if (activeFileId) {
+                updateFileContent(activeFileId, data.content);
+            }
+        };
+        return () => {
+            collaborationService.onCodeChange = null;
+        };
+    }, [activeFileId, updateFileContent]);
 
     if (!activeFile) {
+        // ... (existing welcome screen)
         return (
             <div className="welcome">
                 <div className="welcome__icon">
@@ -555,6 +1177,7 @@ function CodeEditor() {
     }
 
     const languageMap = {
+        // ... (existing map)
         python: 'python',
         javascript: 'javascript',
         java: 'java',
@@ -566,40 +1189,25 @@ function CodeEditor() {
         cpp: 'cpp'
     };
 
-    const { theme, format, features, backgroundImage, backgroundOpacity } = useSettingsStore();
 
-    // Map UI theme to Monaco theme defaults to prevent crashes with custom themes
+
+    // ... (existing getMonacoTheme)
     const getMonacoTheme = (uiTheme) => {
         if (uiTheme === 'light' || uiTheme === 'solarized-light') return 'light';
         if (uiTheme === 'hc-black') return 'hc-black';
         return 'vs-dark'; // Default for dark, nord, dracula
     };
 
-
     return (
         <div className="monaco-wrapper" style={{ position: 'relative' }}>
-            {backgroundImage && (
-                <div
-                    style={{
-                        position: 'absolute',
-                        top: 0,
-                        left: 0,
-                        width: '100%',
-                        height: '100%',
-                        backgroundImage: `url(${backgroundImage})`,
-                        backgroundSize: 'cover',
-                        backgroundPosition: 'center',
-                        opacity: backgroundOpacity,
-                        pointerEvents: 'none',
-                        zIndex: 10
-                    }}
-                />
-            )}
             <Editor
                 height="100%"
                 language={languageMap[activeFile.language] || 'plaintext'}
                 value={activeFile.content}
-                onChange={(value) => updateFileContent(activeFile.id, value || '')}
+                onChange={(value) => {
+                    updateFileContent(activeFile.id, value || '');
+                    collaborationService.sendCodeChange(value || '', activeFile.id);
+                }}
                 theme={getMonacoTheme(theme)}
                 options={{
                     fontFamily: format.fontFamily,
@@ -607,9 +1215,6 @@ function CodeEditor() {
                     lineHeight: format.lineHeight,
                     padding: { top: 16, bottom: 16 },
                     minimap: { enabled: features.minimap },
-                    // Check if transparent background is needed:
-                    // We are putting overlay ON TOP (zIndex 10), so editor background doesn't matter much
-                    // except it sits behind the overlay.
                     scrollBeyondLastLine: false,
                     smoothScrolling: true,
                     cursorBlinking: 'smooth',
@@ -619,7 +1224,24 @@ function CodeEditor() {
                     lineNumbers: features.lineNumbers,
                     bracketPairColorization: { enabled: true }
                 }}
+                onMount={handleEditorDidMount}
             />
+
+            {/* Scribble Overlay - Render after Editor to ensure it's on top - EXPERIMENTAL GATED */}
+            {experimental?.scribble && activeFile && (
+                <ScribbleOverlay
+                    key={activeFile.id}
+                    fileId={activeFile.id}
+                    drawings={activeFile.drawings || []}
+                    onAddDrawing={addDrawing}
+                    onUndo={() => removeLastDrawing(activeFile.id)}
+                    onClear={() => clearDrawings(activeFile.id)}
+                    isActive={isScribbleMode}
+                    tool={scribbleTool}
+                    color={scribbleColor}
+                />
+            )}
+
             {showOutput && (
                 <div style={{
                     position: 'absolute',
@@ -627,7 +1249,7 @@ function CodeEditor() {
                     left: 0,
                     width: '100%',
                     height: '100%',
-                    zIndex: 20,
+                    zIndex: 200, // Higher than ScribbleOverlay (100)
                     backgroundColor: 'var(--bg-primary)',
                     display: 'flex',
                     flexDirection: 'column'
@@ -1768,7 +2390,6 @@ function RightPanel({ style, editorMinimized }) {
         { id: 'github', label: 'GitHub', icon: <FiGithub /> },
         { id: 'social', label: 'Social', icon: <FiShare2 /> },
         { id: 'learn', label: 'Learn', icon: <FiBookOpen /> },
-        { id: 'review', label: 'Review', icon: <FiCheckCircle /> },
         { id: 'apps', label: 'Apps', icon: <FiGrid /> }
     ];
 
@@ -1809,7 +2430,6 @@ function RightPanel({ style, editorMinimized }) {
             {rightPanelTab === 'github' && <GitHubPanel />}
             {rightPanelTab === 'social' && <SocialPanel />}
             {rightPanelTab === 'learn' && <LearningPanel />}
-            {rightPanelTab === 'review' && <ReviewPanel />}
             {rightPanelTab === 'apps' && <AppsPanel onOpenApp={setRightPanelTab} />}
             {rightPanelTab === 'notes' && (
                 <NotesApp
@@ -2253,11 +2873,11 @@ function Notifications() {
 function SettingsModal() {
     const { modals, closeModal, addNotification } = useUIStore();
     const {
-        theme, backgroundImage, backgroundOpacity, format, features,
+        theme, backgroundImage, backgroundOpacity, format, features, experimental,
         uiFontSize, uiFontFamily,
         setTheme, setBackgroundImage, setBackgroundOpacity,
         setUiFontSize, setUiFontFamily,
-        updateFormat, toggleFeature, setFeature
+        updateFormat, toggleFeature, setFeature, toggleExperimental
     } = useSettingsStore();
     const [activeTab, setActiveTab] = useState('theme');
 
@@ -2307,6 +2927,13 @@ function SettingsModal() {
                                 style={{ display: 'flex', alignItems: 'center', width: '100%', padding: '0.75rem 1rem', background: 'none', border: 'none', color: activeTab === 'features' ? 'var(--accent-primary)' : 'var(--text-secondary)', cursor: 'pointer', textAlign: 'left' }}
                             >
                                 <FiCpu style={{ marginRight: '8px' }} /> Features
+                            </button>
+                            <button
+                                className={`settings-tab-btn ${activeTab === 'experimental' ? 'active' : ''}`}
+                                onClick={() => setActiveTab('experimental')}
+                                style={{ display: 'flex', alignItems: 'center', width: '100%', padding: '0.75rem 1rem', background: 'none', border: 'none', color: activeTab === 'experimental' ? 'var(--accent-primary)' : 'var(--text-secondary)', cursor: 'pointer', textAlign: 'left' }}
+                            >
+                                <FiStar style={{ marginRight: '8px' }} /> Experimental
                             </button>
                         </div>
 
@@ -2500,6 +3127,26 @@ function SettingsModal() {
                                     </div>
                                 )
                             }
+                            {
+                                activeTab === 'experimental' && (
+                                    <div className="settings-section">
+                                        <h3 style={{ marginBottom: '1rem', borderBottom: '1px solid var(--border-primary)', paddingBottom: '0.5rem' }}>Experimental Features</h3>
+                                        <p style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', marginBottom: '1rem' }}>
+                                            These features are in development and may be unstable.
+                                        </p>
+
+                                        <div className="form-check" style={{ marginBottom: '0.75rem', display: 'flex', alignItems: 'center' }}>
+                                            <input
+                                                type="checkbox"
+                                                checked={experimental?.scribble}
+                                                onChange={() => toggleExperimental('scribble')}
+                                                style={{ marginRight: '8px' }}
+                                            />
+                                            <label>Scribble Feature (Canvas Overlay)</label>
+                                        </div>
+                                    </div>
+                                )
+                            }
                         </div >
                     </div >
                 </div >
@@ -2508,8 +3155,93 @@ function SettingsModal() {
     );
 }
 
+// Highlight Selection Modal
+function HighlightModal() {
+    const [isOpen, setIsOpen] = useState(false);
+    const [data, setData] = useState(null);
+    const { addHighlight, removeHighlight, files } = useFileStore();
+
+    useEffect(() => {
+        const handleOpen = (e) => {
+            setIsOpen(true);
+            setData(e.detail);
+        };
+        window.addEventListener('open-highlight-modal', handleOpen);
+        return () => window.removeEventListener('open-highlight-modal', handleOpen);
+    }, []);
+
+    if (!isOpen || !data) return null;
+
+    const handleSelectColor = (color) => {
+        if (data && data.selection) {
+            const activeFile = files.find(f => f.id === data.fileId);
+            const selection = data.selection;
+
+            // Remove Overlapping Highlights
+            if (activeFile && activeFile.highlights) {
+                const rangeIntersect = (r1, r2) => {
+                    // Simple Box Intersection
+                    return !(r2.startLineNumber > r1.endLineNumber ||
+                        r2.endLineNumber < r1.startLineNumber ||
+                        (r2.startLineNumber === r1.endLineNumber && r2.startColumn > r1.endColumn) ||
+                        (r2.endLineNumber === r1.startLineNumber && r2.endColumn < r1.startColumn));
+                    // This is rough. Accurate is: 
+                    // range1.start < range2.end && range1.end > range2.start
+                    // Monaco ranges compare:
+                    // Range.intersectRanges(range1, range2) != null
+                };
+
+                // Since we don't have monaco instance here easily, let's use simple logic
+                // Overlap if lines overlap
+                const overlaps = activeFile.highlights.filter(h => {
+                    const r = h.range;
+                    const s = selection;
+                    // Check vertical overlap
+                    if (s.startLineNumber > r.endLineNumber || s.endLineNumber < r.startLineNumber) return false;
+                    // If on same line, check horizontal
+                    // This simple check removes any highlight that touches the new selection lines. 
+                    // User said "A text should not be double highlighted". 
+                    // Aggressive cleanup is safer: overlapping anywhere -> remove old.
+                    return true;
+                });
+
+                overlaps.forEach(h => removeHighlight(data.fileId, h.id));
+            }
+
+            const highlight = {
+                id: Date.now().toString(),
+                color: color,
+                range: data.selection
+            };
+            addHighlight(data.fileId, highlight);
+        }
+        setIsOpen(false);
+        setData(null);
+    };
+
+    return (
+        <div className="modal-overlay" onClick={() => setIsOpen(false)}>
+            <div className="modal" onClick={(e) => e.stopPropagation()} style={{ width: '300px' }}>
+                <div className="modal__header">
+                    <h3 className="modal__title">Choose Highlight Color</h3>
+                    <button className="btn btn--ghost btn--icon" onClick={() => setIsOpen(false)}>
+                        <FiX />
+                    </button>
+                </div>
+                <div className="modal__body" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+                    <button className="btn" style={{ background: '#fef08a', color: '#854d0e', border: '1px solid #fde047' }} onClick={() => handleSelectColor('yellow')}>Yellow</button>
+                    <button className="btn" style={{ background: '#bbf7d0', color: '#166534', border: '1px solid #86efac' }} onClick={() => handleSelectColor('green')}>Green</button>
+                    <button className="btn" style={{ background: '#bfdbfe', color: '#1e40af', border: '1px solid #93c5fd' }} onClick={() => handleSelectColor('blue')}>Blue</button>
+                    <button className="btn" style={{ background: '#fbcfe8', color: '#9d174d', border: '1px solid #f9a8d4' }} onClick={() => handleSelectColor('pink')}>Pink</button>
+                </div>
+            </div>
+        </div>
+    );
+}
+
 // Main App Component
 function App() {
+
     const {
         sidebarOpen, toggleSidebar, openModal, addNotification, editorMinimized, toggleEditorMinimized,
         rightPanelOpen, toggleRightPanel, setRightPanelTab
@@ -2518,6 +3250,36 @@ function App() {
     const { isExecuting, setExecuting, setOutput, setError, setExecutionTime, addToHistory, setShowOutput } = useExecutionStore();
     const { setConnected, setRepositories, isConnected } = useGitHubStore();
     const [terminalOpen, setTerminalOpen] = useState(false);
+
+    const [isController, setIsController] = useState(false);
+    const [isBeingControlled, setIsBeingControlled] = useState(false);
+    const [isScribbleMode, setIsScribbleMode] = useState(false);
+    const [scribbleTool, setScribbleTool] = useState('pen');
+    const [scribbleColor, setScribbleColor] = useState('#ff0000');
+
+    // Setup remote control listeners
+    useEffect(() => {
+        collaborationService.onGrantControl = () => {
+            setIsController(true);
+        };
+        collaborationService.onRevokeControl = () => {
+            setIsController(false);
+            setIsBeingControlled(false);
+        };
+
+        // ESC key to stop controlling
+        const handleEsc = (e) => {
+            if (e.key === 'Escape' && isController) {
+                collaborationService.revokeControl();
+                setIsController(false);
+            }
+        };
+        document.addEventListener('keydown', handleEsc);
+
+        return () => {
+            document.removeEventListener('keydown', handleEsc);
+        };
+    }, [isController]);
 
     // Resizable panel state
     const [rightPanelWidth, setRightPanelWidth] = useState(360);
@@ -2590,6 +3352,14 @@ function App() {
             document.removeEventListener('mouseup', handleMouseUp);
         };
     }, [isResizing]);
+
+    // Sync Scribble Mode with Experimental Settings
+    useEffect(() => {
+        const { experimental } = useSettingsStore.getState();
+        if (!experimental?.scribble && isScribbleMode) {
+            setIsScribbleMode(false);
+        }
+    }, [useSettingsStore.getState().experimental?.scribble, isScribbleMode]);
 
     // Handle GitHub OAuth callback
     useEffect(() => {
@@ -2682,12 +3452,37 @@ function App() {
         handleSocialCallbacks();
     }, []);
 
-    const handleSave = React.useCallback(() => {
-        addNotification({ type: 'success', message: 'File saved successfully!' });
-        if (activeFileId) {
-            markFileSaved(activeFileId);
+    const handleSaveAs = React.useCallback(() => {
+        if (!activeFile) {
+            addNotification({ type: 'error', message: 'No file selected to save' });
+            return;
         }
-    }, [activeFileId, addNotification, markFileSaved]);
+
+        try {
+            // Create a blob from the file content
+            const blob = new Blob([activeFile.content], { type: 'text/plain;charset=utf-8' });
+
+            // Create a download link
+            const url = URL.createObjectURL(blob);
+            const link = document.createElement('a');
+            link.href = url;
+            link.download = activeFile.name;
+
+            // Trigger download
+            document.body.appendChild(link);
+            link.click();
+
+            // Cleanup
+            document.body.removeChild(link);
+            URL.revokeObjectURL(url);
+
+            addNotification({ type: 'success', message: `File saved as ${activeFile.name}` });
+            markFileSaved(activeFileId);
+        } catch (error) {
+            addNotification({ type: 'error', message: 'Failed to save file' });
+            console.error('Save error:', error);
+        }
+    }, [activeFile, activeFileId, addNotification, markFileSaved]);
 
     const handleRunCode = React.useCallback(async () => {
         // activeFile is a derived value, so we should get it from state or depend on it
@@ -2771,85 +3566,6 @@ function App() {
         setExecuting(false);
     }, [activeFile, activeFileId, addNotification, rightPanelOpen, toggleRightPanel, setRightPanelTab, setExecuting, setOutput, setError, setExecutionTime, setShowOutput, addToHistory]);
 
-    // Helper function to open Notes app in a new window
-    const openNotesWindow = React.useCallback(() => {
-        const notesWindow = window.open('', 'Roolts Notes', 'width=900,height=700');
-        if (notesWindow) {
-            notesWindow.document.write(`
-                <!DOCTYPE html>
-                <html>
-                <head>
-                    <title>Roolts Notes</title>
-                    <style>
-                        * { margin: 0; padding: 0; box-sizing: border-box; }
-                        body { 
-                            font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
-                            height: 100vh;
-                            overflow: hidden;
-                        }
-                        #notes-root { height: 100%; }
-                    </style>
-                    ${document.querySelector('style') ? document.querySelector('style').outerHTML : ''}
-                    <link rel="preconnect" href="https://fonts.googleapis.com">
-                    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-                    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
-                </head>
-                <body>
-                    <div id="notes-root"></div>
-                    <script>
-                        // Notify parent that window is closing
-                        window.addEventListener('beforeunload', () => {
-                            if (window.opener && !window.opener.closed) {
-                                window.opener.postMessage({ type: 'notes-window-closed' }, '*');
-                            }
-                        });
-                    </script>
-                </body>
-                </html>
-            `);
-            notesWindow.document.close();
-
-            // Import React and ReactDOM dynamically in the new window
-            import('react').then((React) => {
-                import('react-dom/client').then((ReactDOM) => {
-                    import('./components/apps/NotesApp').then((module) => {
-                        const NotesApp = module.default;
-                        const root = ReactDOM.createRoot(notesWindow.document.getElementById('notes-root'));
-                        root.render(React.createElement(NotesApp, { isWindowed: true }));
-                    });
-                });
-            });
-        }
-    }, []);
-
-    // Voice Commands Integration
-    const voiceCommands = React.useMemo(() => ({
-        'run code': () => handleRunCode(),
-        'save file': () => handleSave(),
-        'new file': () => openModal('newFile'),
-        'open settings': () => openModal('settings'),
-        'open portfolio': () => openModal('portfolioGenerator'),
-        'review code': () => {
-            if (!rightPanelOpen) toggleRightPanel();
-            setRightPanelTab('review');
-        },
-        'open terminal': () => {
-            if (!terminalOpen) setTerminalOpen(true);
-        },
-        'close terminal': () => {
-            if (terminalOpen) setTerminalOpen(false);
-        }
-    }), [handleRunCode, handleSave, openModal, rightPanelOpen, toggleRightPanel, terminalOpen, setTerminalOpen]);
-
-    const { isListening, toggleListening, feedback, isSupported } = useVoiceCommands(voiceCommands);
-
-    // Show voice feedback
-    useEffect(() => {
-        if (feedback) {
-            addNotification({ type: feedback.type, message: feedback.message });
-        }
-    }, [feedback]);
-
 
     return (
         <div className="app">
@@ -2860,18 +3576,6 @@ function App() {
                     <h1 className="header__title">Roolts</h1>
                 </div>
                 <div className="header__actions">
-                    {/* Voice Control Button */}
-                    {isSupported && (
-                        <button
-                            className={`btn btn--icon ${isListening ? 'btn--danger pulsing' : 'btn--ghost'}`}
-                            onClick={toggleListening}
-                            title={isListening ? "Stop Listening" : "Start Voice Control"}
-                            style={{ marginRight: '8px' }}
-                        >
-                            {isListening ? <FiMicOff /> : <FiMic />}
-                        </button>
-                    )}
-
                     <button
                         className="btn btn--success"
                         onClick={handleRunCode}
@@ -2884,37 +3588,14 @@ function App() {
                             <><FiPlay /> Run</>
                         )}
                     </button>
-                    <button
-                        className="btn btn--secondary"
-                        onClick={() => {
-                            if (!rightPanelOpen) toggleRightPanel();
-                            setRightPanelTab('review');
-                        }}
-                        title="AI Code Review"
-                    >
-                        <FiCheckCircle /> Review
-                    </button>
-                    <button className="btn btn--ghost btn--icon" onClick={handleSave} title="Save">
+                    <button className="btn btn--ghost btn--icon" onClick={handleSaveAs} title="Save As">
                         <FiSave />
                     </button>
                     <button className="btn btn--ghost btn--icon" onClick={() => openModal('newFile')} title="New File">
                         <FiPlus />
                     </button>
-                    <button
-                        className="btn btn--ghost btn--icon"
-                        onClick={openNotesWindow}
-                        title="Open Notes (Separate Window)"
-                    >
-                        <FiMessageSquare />
-                    </button>
                     <button className="btn btn--ghost btn--icon" onClick={() => openModal('settings')} title="Settings">
                         <FiSettings />
-                    </button>
-                    <button className="btn btn--ghost btn--icon" onClick={() => openModal('portfolioGenerator')} title="Generate Portfolio">
-                        <FiLayout />
-                    </button>
-                    <button className="btn btn--ghost btn--icon" onClick={() => openModal('deployment')} title="Deploy to Cloud">
-                        <FiUploadCloud />
                     </button>
 
                 </div>
@@ -2983,8 +3664,21 @@ function App() {
                             </div>
                         ) : (
                             <>
-                                <EditorTabs />
-                                <CodeEditor />
+                                <EditorTabs
+                                    isScribbleMode={isScribbleMode}
+                                    toggleScribbleMode={() => setIsScribbleMode(!isScribbleMode)}
+                                    scribbleTool={scribbleTool}
+                                    setScribbleTool={setScribbleTool}
+                                    scribbleColor={scribbleColor}
+                                    setScribbleColor={setScribbleColor}
+                                    onUndo={() => activeFileId && removeLastDrawing(activeFileId)}
+                                    onClear={() => activeFileId && clearDrawings(activeFileId)}
+                                />
+                                <CodeEditor
+                                    isScribbleMode={isScribbleMode}
+                                    scribbleTool={scribbleTool}
+                                    scribbleColor={scribbleColor}
+                                />
                             </>
                         )}
                     </div>
@@ -3031,6 +3725,7 @@ function App() {
             <StatusBar />
 
             {/* Modals */}
+            <HighlightModal />
             <NewFileModal />
             <SettingsModal />
             <PortfolioGeneratorModal />
@@ -3041,6 +3736,16 @@ function App() {
 
             {/* Notifications */}
             <Notifications />
+
+            {/* Remote Control Overlay */}
+            <RemoteControlOverlay
+                isController={isController}
+                isBeingControlled={isBeingControlled}
+                onControlEnd={() => {
+                    setIsController(false);
+                    setIsBeingControlled(false);
+                }}
+            />
         </div>
     );
 }
