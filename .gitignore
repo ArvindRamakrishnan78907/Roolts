@@ -38,4 +38,11 @@ coverage/
 *.jar
 .gradle/
 build/
+<<<<<<< HEAD
 node_modules_trash/
+=======
+
+
+# anas-solution
+/anas-solution
+>>>>>>> fda3ab0e (feat: Implement backend for virtual environment management with Docker, including core services, API routes, models, and documentation.)
