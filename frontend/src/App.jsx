@@ -46,7 +46,9 @@ import {
     FiMapPin,
     FiLayout,
     FiGrid,
-    FiFilePlus
+    FiFilePlus,
+    FiDelete,
+    FiRotateCcw
 } from 'react-icons/fi';
 import ReactMarkdown from 'react-markdown';
 import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter';
@@ -821,7 +823,7 @@ function EditorTabs({ isScribbleMode, toggleScribbleMode, scribbleTool, setScrib
                         title="Eraser"
                         style={{ width: '24px', height: '24px', padding: 0 }}
                     >
-                        <FiX size={12} /> {/* Using X icon for Eraser */}
+                        <FiDelete size={12} />
                     </button>
 
                     <button
@@ -3597,6 +3599,29 @@ function App() {
                     <button className="btn btn--ghost btn--icon" onClick={() => openModal('settings')} title="Settings">
                         <FiSettings />
                     </button>
+
+                    {/* Circular Undo button for Scribble - appears when scribble mode is active */}
+                    {isScribbleMode && (
+                        <button
+                            className="btn btn--icon"
+                            onClick={() => activeFileId && removeLastDrawing(activeFileId)}
+                            title="Undo Scribble"
+                            style={{
+                                border: '2px solid var(--accent-primary)',
+                                borderRadius: '50%',
+                                width: '36px',
+                                height: '36px',
+                                display: 'flex',
+                                alignItems: 'center',
+                                justifyContent: 'center',
+                                padding: 0,
+                                background: 'var(--bg-primary)',
+                                marginLeft: '8px'
+                            }}
+                        >
+                            <FiRotateCcw size={18} />
+                        </button>
+                    )}
 
                 </div>
             </header>
