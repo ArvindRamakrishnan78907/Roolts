@@ -5,10 +5,9 @@ export const useVoiceCommands = (commands = {}) => {
     const [transcript, setTranscript] = useState('');
     const [feedback, setFeedback] = useState(null); // { type: 'success' | 'error' | 'info' | 'warning', message: '' }
     const [recognition, setRecognition] = useState(null);
-
     const commandsRef = useRef(commands);
 
-    // Keep latest commands without reinitializing speech recognition
+    // Update commands ref when commands change
     useEffect(() => {
         commandsRef.current = commands;
     }, [commands]);
@@ -17,71 +16,58 @@ export const useVoiceCommands = (commands = {}) => {
         const SpeechRecognition =
             window.SpeechRecognition || window.webkitSpeechRecognition;
 
-        if (!SpeechRecognition) {
-            setFeedback({
-                type: 'error',
-                message: 'Voice control not supported in this browser.',
-            });
-            return;
-        }
+        if (SpeechRecognition) {
+            const recognitionInstance = new SpeechRecognition();
+            recognitionInstance.continuous = false; // Stop after one command usually better for control
+            recognitionInstance.lang = 'en-US';
+            recognitionInstance.interimResults = false;
 
-        const recognitionInstance = new SpeechRecognition();
-        recognitionInstance.continuous = false;
-        recognitionInstance.lang = 'en-US';
-        recognitionInstance.interimResults = false;
+            recognitionInstance.onstart = () => {
+                setIsListening(true);
+                setFeedback({ type: 'info', message: 'Listening...' });
+            };
 
-        recognitionInstance.onstart = () => {
-            setIsListening(true);
-            setFeedback({ type: 'info', message: 'Listening...' });
-        };
+            recognitionInstance.onend = () => {
+                setIsListening(false);
+            };
 
-        recognitionInstance.onend = () => {
-            setIsListening(false);
-        };
+            recognitionInstance.onresult = (event) => {
+                const last = event.results.length - 1;
+                const text = event.results[last][0].transcript.toLowerCase().trim();
+                setTranscript(text);
 
-        recognitionInstance.onresult = (event) => {
-            const last = event.results.length - 1;
-            const text = event.results[last][0].transcript
-                .toLowerCase()
-                .trim();
+                console.log('Voice Command:', text);
 
-            setTranscript(text);
-            console.log('Voice Command:', text);
+                // Match command using current commands ref
+                let matched = false;
+                const currentCommands = commandsRef.current;
 
-            let matched = false;
-            const currentCommands = commandsRef.current;
-
-            for (const [command, action] of Object.entries(currentCommands)) {
-                if (text.includes(command.toLowerCase())) {
-                    action();
-                    setFeedback({
-                        type: 'success',
-                        message: `Executed: "${command}"`,
-                    });
-                    matched = true;
-                    break;
+                // Direct match or "sounds like" match
+                for (const [command, action] of Object.entries(currentCommands)) {
+                    if (text.includes(command.toLowerCase())) {
+                        action();
+                        setFeedback({ type: 'success', message: `Executed: "${command}"` });
+                        matched = true;
+                        break;
+                    }
                 }
-            }
 
-            if (!matched) {
-                setFeedback({
-                    type: 'warning',
-                    message: `Unknown command: "${text}"`,
-                });
-            }
-        };
+                if (!matched) {
+                    setFeedback({ type: 'warning', message: `Unknown command: "${text}"` });
+                }
+            };
 
-        recognitionInstance.onerror = (event) => {
-            console.error('Speech recognition error', event.error);
-            setFeedback({
-                type: 'error',
-                message: `Error: ${event.error}`,
-            });
-            setIsListening(false);
-        };
+            recognitionInstance.onerror = (event) => {
+                console.error('Speech recognition error', event.error);
+                setFeedback({ type: 'error', message: `Error: ${event.error}` });
+                setIsListening(false);
+            };
 
-        setRecognition(recognitionInstance);
-    }, []); // initialize once only
+            setRecognition(recognitionInstance);
+        } else {
+            setFeedback({ type: 'error', message: 'Voice control not supported in this browser.' });
+        }
+    }, []); // Remove commands from dependency array
 
     const toggleListening = useCallback(() => {
         if (!recognition) return;

@@ -5,19 +5,47 @@
 
 import axios from 'axios';
 
+// DEVELOPMENT CONFIGURATION
+// Default user ID for development/testing
+// TODO: Replace with proper authentication system in production
+const DEV_USER_ID = '1';
+
 const terminalApi = axios.create({
     baseURL: '/api/terminal',
     timeout: 120000, // 2 minutes for long commands like pip install
     headers: {
-        'Content-Type': 'application/json'
+        'Content-Type': 'application/json',
+        'X-User-ID': DEV_USER_ID
     }
 });
 
 export const terminalService = {
     /**
      * Execute a command in the terminal
+     * Automatically uses virtual environment if available, otherwise uses local terminal
      */
     execute: async (command, sessionId = 'default') => {
+        try {
+            // Try virtual environment execution first
+            const { default: backgroundEnvManager } = await import('./backgroundEnvManager.js');
+
+            if (backgroundEnvManager.isVirtualEnvAvailable()) {
+                console.log('[Terminal] Executing in virtual environment:', command);
+                const result = await backgroundEnvManager.executeCommand(command, 30);
+
+                return {
+                    success: result.exit_code === 0,
+                    output: result.stdout || result.stderr || '',
+                    error: result.exit_code !== 0 ? (result.stderr || 'Command failed') : '',
+                    cwd: '/workspace',
+                    exit_code: result.exit_code
+                };
+            }
+        } catch (error) {
+            console.log('[Terminal] Virtual environment not available, using local terminal:', error.message);
+        }
+
+        // Fallback to local terminal API
         try {
             const response = await terminalApi.post('/execute', {
                 command,

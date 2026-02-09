@@ -4,6 +4,7 @@ API endpoints for managing user virtual development environments.
 """
 
 import time
+import os
 from datetime import datetime, timedelta
 from flask import Blueprint, request, jsonify
 from functools import wraps
@@ -524,8 +525,11 @@ def read_file(env_id, file_path):
             return jsonify({'error': 'Environment not found'}), 404
         
         # Ensure path starts with /workspace
-        if not file_path.startswith('/workspace'):
-            file_path = f'/workspace/{file_path}'
+        clean_path = file_path.strip().lstrip('/')
+        if clean_path.startswith('workspace/') or clean_path == 'workspace':
+            file_path = '/' + clean_path
+        else:
+            file_path = f'/workspace/{clean_path}'
         
         # Read file
         success, content, error = file_manager.read_file(
@@ -571,8 +575,11 @@ def write_file(env_id, file_path):
         append = data.get('append', False)
         
         # Ensure path starts with /workspace
-        if not file_path.startswith('/workspace'):
-            file_path = f'/workspace/{file_path}'
+        clean_path = file_path.strip().lstrip('/')
+        if clean_path.startswith('workspace/') or clean_path == 'workspace':
+            file_path = '/' + clean_path
+        else:
+            file_path = f'/workspace/{clean_path}'
         
         # Write file
         success, error = file_manager.write_file(
@@ -603,9 +610,62 @@ def write_file(env_id, file_path):
         return jsonify({'error': str(e)}), 500
 
 
+@virtual_env_bp.route('/environments/<int:env_id>/files/create', methods=['POST'])
+@require_auth
+def create_file(env_id):
+    """Create a new file or directory."""
+    try:
+        env = VirtualEnvironment.query.filter_by(
+            id=env_id,
+            user_id=request.user_id
+        ).first()
+        
+        if not env:
+            return jsonify({'error': 'Environment not found'}), 404
+        
+        data = request.get_json()
+        if not data or 'path' not in data or 'type' not in data:
+            return jsonify({'error': 'Missing required fields: path, type'}), 400
+        
+        path = data['path']
+        item_type = data['type'] # 'file' or 'directory'
+        
+        # Ensure path starts with /workspace
+        clean_path = path.strip().lstrip('/')
+        if clean_path.startswith('workspace/') or clean_path == 'workspace':
+            path = '/' + clean_path
+        else:
+            path = f'/workspace/{clean_path}'
+            
+        if item_type == 'directory':
+            command = f'mkdir -p "{path}"'
+        else:
+            # Create empty file
+            # Ensure directory exists first
+            dir_path = os.path.dirname(path)
+            command = f'mkdir -p "{dir_path}" && touch "{path}"'
+            
+        exit_code, stdout, stderr = docker_manager.execute_command(
+            env.container_id,
+            command
+        )
+        
+        if exit_code != 0:
+            return jsonify({'error': stderr or stdout or 'Failed to create item'}), 400
+            
+        return jsonify({
+            'success': True,
+            'message': f'{item_type.capitalize()} created successfully',
+            'path': path
+        }), 201
+        
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
 @virtual_env_bp.route('/environments/<int:env_id>/files/<path:file_path>', methods=['DELETE'])
 @require_auth
-def delete_file(env_id, file_path):
+def delete_file_endpoint(env_id, file_path):
     """Delete a file or directory."""
     try:
         env = VirtualEnvironment.query.filter_by(
@@ -617,33 +677,81 @@ def delete_file(env_id, file_path):
             return jsonify({'error': 'Environment not found'}), 404
         
         # Ensure path starts with /workspace
-        if not file_path.startswith('/workspace'):
-            file_path = f'/workspace/{file_path}'
-        
-        recursive = request.args.get('recursive', 'false').lower() == 'true'
-        
-        # Delete file
+        clean_path = file_path.strip().lstrip('/')
+        if clean_path.startswith('workspace/') or clean_path == 'workspace':
+            file_path = '/' + clean_path
+        else:
+            file_path = f'/workspace/{clean_path}'
+            
         success, error = file_manager.delete_file(
             env.container_id,
             file_path,
-            recursive
+            recursive=True
         )
         
         if not success:
             return jsonify({'error': error}), 400
-        
-        # Update access time
-        env.update_access_time()
-        db.session.commit()
-        
-        # Log action
-        log_action(env.id, 'file_delete', file_path, 'success', '')
-        
+            
         return jsonify({
             'success': True,
-            'message': 'File deleted successfully'
+            'message': 'Item deleted successfully',
+            'path': file_path
         }), 200
-    
+        
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
+@virtual_env_bp.route('/environments/<int:env_id>/files/rename', methods=['POST'])
+@require_auth
+def rename_file(env_id):
+    """Rename a file or directory."""
+    try:
+        env = VirtualEnvironment.query.filter_by(
+            id=env_id,
+            user_id=request.user_id
+        ).first()
+        
+        if not env:
+            return jsonify({'error': 'Environment not found'}), 404
+            
+        data = request.get_json()
+        if not data or 'old_path' not in data or 'new_path' not in data:
+            return jsonify({'error': 'Missing required fields: old_path, new_path'}), 400
+            
+        old_path = data['old_path']
+        new_path = data['new_path']
+        
+        # Ensure paths start with /workspace
+        clean_old = old_path.strip().lstrip('/')
+        if clean_old.startswith('workspace/') or clean_old == 'workspace':
+            old_path = '/' + clean_old
+        else:
+            old_path = f'/workspace/{clean_old}'
+            
+        clean_new = new_path.strip().lstrip('/')
+        if clean_new.startswith('workspace/') or clean_new == 'workspace':
+            new_path = '/' + clean_new
+        else:
+            new_path = f'/workspace/{clean_new}'
+            
+        command = f'mv "{old_path}" "{new_path}"'
+        
+        exit_code, stdout, stderr = docker_manager.execute_command(
+            env.container_id,
+            command
+        )
+        
+        if exit_code != 0:
+            return jsonify({'error': stderr or stdout or 'Failed to rename item'}), 400
+            
+        return jsonify({
+            'success': True,
+            'message': 'Item renamed successfully',
+            'old_path': old_path,
+            'new_path': new_path
+        }), 200
+        
     except Exception as e:
         return jsonify({'error': str(e)}), 500
 
@@ -668,8 +776,11 @@ def create_directory(env_id):
         dir_path = data['path']
         
         # Ensure path starts with /workspace
-        if not dir_path.startswith('/workspace'):
-            dir_path = f'/workspace/{dir_path}'
+        clean_path = dir_path.strip().lstrip('/')
+        if clean_path.startswith('workspace/') or clean_path == 'workspace':
+            dir_path = '/' + clean_path
+        else:
+            dir_path = f'/workspace/{clean_path}'
         
         # Create directory
         success, error = file_manager.create_directory(

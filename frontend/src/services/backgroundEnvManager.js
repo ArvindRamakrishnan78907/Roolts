@@ -1,62 +1,162 @@
+import virtualEnvService from './virtualEnvService';
+
 /**
- * Background Environment Manager
- * Manages virtual environment availability and status
+ * Background Virtual Environment Manager
+ * Automatically manages a default virtual environment for the user
+ * Completely transparent - no UI needed
  */
+
 class BackgroundEnvManager {
     constructor() {
-        // Cache for environment status
-        this.envStatus = null;
-        this.lastCheck = 0;
-        this.checkInterval = 30000; // Check every 30 seconds
+        this.defaultEnvName = 'default-workspace';
+        this.defaultEnvId = null;
+        this.isInitialized = false;
+        this.isAvailable = false;
     }
 
     /**
-     * Check if virtual environment is available
-     * @returns {boolean} - True if environment is available
+     * Initialize the background environment
+     * Creates or retrieves the default environment
      */
-    isVirtualEnvAvailable() {
-        // For now, always return true since environment management might not be fully implemented
-        // In a real implementation, this would check if Docker container is running
-        return true;
+    async initialize() {
+        if (this.isInitialized) return;
 
-        // Future implementation:
-        // const now = Date.now();
-        // if (now - this.lastCheck > this.checkInterval) {
-        //     this.checkEnvironmentStatus();
-        //     this.lastCheck = now;
-        // }
-        // return this.envStatus === 'running';
-    }
-
-    /**
-     * Check environment status (placeholder for future implementation)
-     */
-    async checkEnvironmentStatus() {
         try {
-            const envId = this.getCurrentEnvironmentId();
-            if (!envId) {
-                this.envStatus = null;
+            // Check if virtual env API is available
+            this.isAvailable = await virtualEnvService.isAvailable();
+
+            if (!this.isAvailable) {
+                console.log('[BackgroundEnv] Virtual environment API not available, using local execution');
+                this.isInitialized = true;
                 return;
             }
 
-            // This would call the backend API to check environment status
-            // const response = await api.get(`/virtual_env/environments/${envId}`);
-            // this.envStatus = response.data.container_status.running ? 'running' : 'stopped';
+            // Get or create default environment
+            const environments = await virtualEnvService.listEnvironments();
+            let defaultEnv = environments.environments?.find(env => env.name === this.defaultEnvName);
 
-            this.envStatus = 'running'; // Placeholder
+            if (!defaultEnv) {
+                // Create default environment
+                console.log('[BackgroundEnv] Creating default environment...');
+                const result = await virtualEnvService.createEnvironment(this.defaultEnvName, 'fullstack');
+                defaultEnv = result.environment;
+                console.log('[BackgroundEnv] Default environment created:', defaultEnv.id);
+            }
+
+            this.defaultEnvId = defaultEnv.id;
+
+            // Ensure environment is running
+            if (defaultEnv.status !== 'running') {
+                console.log('[BackgroundEnv] Starting default environment...');
+                await virtualEnvService.startEnvironment(this.defaultEnvId);
+            }
+
+            this.isInitialized = true;
+            console.log('[BackgroundEnv] Initialized successfully');
         } catch (error) {
-            console.error('[BackgroundEnvManager] Error checking environment status:', error);
-            this.envStatus = null;
+            console.error('[BackgroundEnv] Initialization failed:', error);
+            this.isAvailable = false;
+            this.isInitialized = true;
         }
     }
 
     /**
-     * Get current environment ID
+     * Re-check environment availability
+     * Useful if backend was offline during startup
      */
-    getCurrentEnvironmentId() {
-        return localStorage.getItem('current_env_id') || '1';
+    async recheckAvailability() {
+        this.isInitialized = false;
+        this.isAvailable = false;
+        await this.initialize();
+        return this.isVirtualEnvAvailable();
+    }
+
+    /**
+     * Get the default environment ID
+     * @returns {number|null} Environment ID or null if not available
+     */
+    getDefaultEnvId() {
+        return this.isAvailable ? this.defaultEnvId : null;
+    }
+
+    /**
+     * Check if virtual environment is available
+     * @returns {boolean}
+     */
+    isVirtualEnvAvailable() {
+        return this.isAvailable && this.defaultEnvId !== null;
+    }
+
+    /**
+     * Execute a command in the default environment
+     * @param {string} command - Command to execute
+     * @param {number} timeout - Timeout in seconds
+     * @returns {Promise<Object>} Execution result
+     */
+    async executeCommand(command, timeout = 30) {
+        if (!this.isVirtualEnvAvailable()) {
+            throw new Error('Virtual environment not available');
+        }
+
+        return await virtualEnvService.executeCommand(this.defaultEnvId, command, timeout);
+    }
+
+    /**
+     * Write a file to the default environment
+     * @param {string} filePath - File path
+     * @param {string} content - File content
+     * @returns {Promise<Object>} Result
+     */
+    async writeFile(filePath, content) {
+        if (!this.isVirtualEnvAvailable()) {
+            throw new Error('Virtual environment not available');
+        }
+
+        return await virtualEnvService.writeFile(this.defaultEnvId, filePath, content, false);
+    }
+
+    /**
+     * Read a file from the default environment
+     * @param {string} filePath - File path
+     * @returns {Promise<Object>} File content
+     */
+    async readFile(filePath) {
+        if (!this.isVirtualEnvAvailable()) {
+            throw new Error('Virtual environment not available');
+        }
+
+        return await virtualEnvService.readFile(this.defaultEnvId, filePath);
+    }
+
+    /**
+     * Delete a file from the default environment
+     * @param {string} filePath - File path
+     * @returns {Promise<Object>} Result
+     */
+    async deleteFile(filePath) {
+        if (!this.isVirtualEnvAvailable()) {
+            throw new Error('Virtual environment not available');
+        }
+
+        return await virtualEnvService.deleteFile(this.defaultEnvId, filePath, false);
+    }
+
+    /**
+     * Install packages in the default environment
+     * @param {string} manager - Package manager (npm, pip, yarn)
+     * @param {Array<string>} packages - Package names
+     * @returns {Promise<Object>} Installation result
+     */
+    async installPackages(manager, packages) {
+        if (!this.isVirtualEnvAvailable()) {
+            throw new Error('Virtual environment not available');
+        }
+
+        return await virtualEnvService.installPackages(this.defaultEnvId, manager, packages);
     }
 }
 
+// Create singleton instance
 const backgroundEnvManager = new BackgroundEnvManager();
+
 export default backgroundEnvManager;
