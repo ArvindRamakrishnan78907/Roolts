@@ -36,8 +36,10 @@ class DockerManager:
             self.client.ping()
             print("[OK] Docker connection established")
         except DockerException as e:
-            print(f"[ERROR] Docker connection failed: {e}")
-            raise Exception("Docker is not available. Please ensure Docker is installed and running.")
+            print(f"[ERROR] Docker connection failed (Continuing without Docker): {e}")
+            # Do not raise exception so the app can start for other features (like code execution)
+            self.client = None
+            # raise Exception("Docker is not available. Please ensure Docker is installed and running.")
     
     def create_environment(
         self,

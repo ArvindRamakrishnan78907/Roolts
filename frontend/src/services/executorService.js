@@ -100,7 +100,8 @@ export const executorService = {
             java: [/\bpublic\s+class\s+/, /\bpublic\s+static\s+void\s+main/],
             javascript: [/\bfunction\s+\w+\s*\(/, /\bconst\s+\w+\s*=/, /=>/],
             c: [/#include\s+<stdio\.h>/, /\bint\s+main\s*\(/],
-            cpp: [/#include\s+<iostream>/, /\busing\s+namespace\s+std;/, /\bstd::cout/]
+            cpp: [/#include\s+<iostream>/, /\busing\s+namespace\s+std;/, /\bstd::cout/],
+            go: [/\bpackage\s+main\b/, /\bfunc\s+main\s*\(/, /\bimport\s+\(/]
         };
 
         for (const [lang, langPatterns] of Object.entries(patterns)) {
@@ -124,7 +125,8 @@ export const executorService = {
             javascript: '📜',
             js: '📜',
             c: 'C',
-            cpp: 'C++'
+            cpp: 'C++',
+            go: 'Go'
         };
         return icons[language.toLowerCase()] || '📄';
     }

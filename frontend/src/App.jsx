@@ -48,8 +48,10 @@ import {
     FiGrid,
     FiFilePlus,
     FiDelete,
-    FiRotateCcw
+    FiRotateCcw,
+    FiEdit2
 } from 'react-icons/fi';
+import { collaborationService } from './services/collaborationService';
 import ReactMarkdown from 'react-markdown';
 import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter';
 import { vscDarkPlus } from 'react-syntax-highlighter/dist/esm/styles/prism';
@@ -158,16 +160,19 @@ const EditorTab = React.memo(({ file, activeFileId, showOutput, setActiveFile, s
 
 // Helper function to get file icon
 const getFileIcon = (language) => {
-    const icons = {
-        python: '🐍',
-        javascript: '📜',
-        java: '☕',
-        html: '🌐',
-        css: '🎨',
-        json: '📋',
+    const iconStyle = { width: '16px', height: '16px', objectFit: 'contain', display: 'block' };
+    const largerStyle = { width: '20px', height: '20px', objectFit: 'contain', display: 'block' };
 
-        c: <span style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', width: '20px' }}><FiCpu color="#A8B9CC" size={14} /></span>,
-        cpp: <span style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', width: '20px' }}><FiCpu color="#00599C" size={14} /></span>,
+    const icons = {
+        python: <img src="/icons/python.png" alt="python" style={iconStyle} />,
+        javascript: <img src="/icons/javascript.png" alt="javascript" style={iconStyle} />,
+        java: <img src="/icons/java.png" alt="java" style={iconStyle} />,
+        html: <img src="/icons/html.png" alt="html" style={iconStyle} />,
+        css: <img src="/icons/css.png" alt="css" style={iconStyle} />,
+        json: '📋',
+        c: <img src="/icons/cpp.png" alt="c" style={iconStyle} />,
+        cpp: <img src="/icons/cpp.png" alt="cpp" style={iconStyle} />,
+        go: <img src="/icons/go.png" alt="go" style={largerStyle} />,
         default: '📄'
     };
     return icons[language] || icons.default;
@@ -1005,9 +1010,6 @@ function OutputPanel() {
     );
 }
 
-import { collaborationService } from './services/collaborationService';
-
-// ... (existing imports)
 
 // Monaco Editor Component
 function CodeEditor({ isScribbleMode, scribbleTool = 'pen', scribbleColor = '#ff0000' }) {
@@ -2723,7 +2725,10 @@ function NewFileModal() {
                         autoFocus
                     />
 
-                    <label className="label">Language</label>
+                    <label className="label" style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                        Language
+                        <span style={{ marginLeft: 'auto' }}>{getFileIcon(language)}</span>
+                    </label>
                     <select
                         className="input"
                         value={language}
@@ -2827,7 +2832,10 @@ function StatusBar() {
             <div className="status-bar__right">
                 {activeFile && (
                     <>
-                        <span className="status-bar__item">{activeFile.language}</span>
+                        <span className="status-bar__item" style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                            {getFileIcon(activeFile.language)}
+                            {activeFile.language}
+                        </span>
                         <span className="status-bar__item">UTF-8</span>
                         <span className="status-bar__item">
                             {activeFile.content.split('\n').length} lines
@@ -3240,6 +3248,65 @@ function HighlightModal() {
         </div>
     );
 }
+
+// Input Request Modal
+function InputRequestModal({ isOpen, onSubmit, onCancel }) {
+    const [inputVal, setInputVal] = useState('');
+
+    if (!isOpen) return null;
+
+    return (
+        <div className="modal-overlay">
+            <div className="modal" style={{ width: '400px' }}>
+                <div className="modal__header">
+                    <h3 className="modal__title">Program Input Required</h3>
+                    <button className="btn btn--ghost btn--icon" onClick={onCancel}>
+                        <FiX />
+                    </button>
+                </div>
+                <div className="modal__body">
+                    <p style={{ marginBottom: '1rem', color: 'var(--text-secondary)', fontSize: '13px' }}>
+                        This program appears to require input. Please enter the input values below (one per line/prompt).
+                    </p>
+                    <textarea
+                        className="input input--textarea"
+                        value={inputVal}
+                        onChange={(e) => setInputVal(e.target.value)}
+                        placeholder="Enter input..."
+                        style={{ minHeight: '100px', fontSize: '14px', fontFamily: 'var(--font-mono)' }}
+                        autoFocus
+                    />
+                </div>
+                <div className="modal__footer">
+                    <button className="btn btn--secondary" onClick={onCancel}>Cancel</button>
+                    <button className="btn btn--primary" onClick={() => onSubmit(inputVal)}>Run Program</button>
+                </div>
+            </div>
+        </div>
+    );
+}
+
+// Helper to detect if code needs input
+const detectInputRequirement = (code, language) => {
+    if (!code) return false;
+    const c = code; // no specific normalization needed usually
+
+    switch (language) {
+        case 'python':
+            return /\binput\s*\(/.test(c);
+        case 'java':
+            return /Scanner\s*\(System\.in\)/.test(c) || /Console\.readLine/.test(c) || /BufferedReader.*InputStreamReader/.test(c);
+        case 'javascript':
+            return /readline/.test(c) || /process\.stdin/.test(c) || /prompt\s*\(/.test(c);
+        case 'c':
+        case 'cpp':
+            return /scanf/.test(c) || /cin\s*>>/.test(c) || /getline/.test(c) || /gets/.test(c);
+        case 'go':
+            return /fmt\.Scan/.test(c) || /fmt\.Fscan/.test(c) || /reader\.ReadString/.test(c);
+        default:
+            return false;
+    }
+};
 
 // Main App Component
 function App() {

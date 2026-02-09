@@ -6,50 +6,87 @@ import requests
 import shutil
 from pathlib import Path
 
-# w64devkit 1.21.0 (smaller ~80MB)
-COMPILER_URL = "https://github.com/skeeto/w64devkit/releases/download/v1.21.0/w64devkit-1.21.0.zip"
-COMPILER_DIR = Path("compiler")
-# w64devkit extracts to 'w64devkit' by default
-COMPILER_BIN = COMPILER_DIR / "w64devkit" / "bin"
+# Configuration for portable runtimes
+RUNTIMES_DIR = Path("compiler")
 
-def is_gcc_installed():
-    """Check if gcc is available in the current PATH."""
+RUNTIME_CONFIG = {
+    'c_cpp': {
+        'url': "https://github.com/skeeto/w64devkit/releases/download/v1.21.0/w64devkit-1.21.0.zip",
+        'zip_name': "w64devkit.zip",
+        'extract_dir': "c_cpp",
+        'bin_path': "w64devkit/bin",
+        'executables': {
+            'gcc': 'gcc.exe',
+            'g++': 'g++.exe',
+            'make': 'make.exe'
+        }
+    },
+    'python': {
+        'url': "https://www.python.org/ftp/python/3.11.4/python-3.11.4-embed-amd64.zip",
+        'zip_name': "python_portable.zip",
+        'extract_dir': "python",
+        'bin_path': "",
+        'executables': {
+            'python': 'python.exe'
+        }
+    },
+    'java': {
+        'url': "https://github.com/adoptium/temurin21-binaries/releases/download/jdk-21.0.2%2B13/OpenJDK21U-jdk_x64_windows_hotspot_21.0.2_13.zip",
+        'zip_name': "openjdk.zip",
+        'extract_dir': "java", 
+        'bin_path': "jdk-21.0.2+13/bin", # Temurin has this nested
+        'executables': {
+            'java': 'java.exe',
+            'javac': 'javac.exe'
+        }
+    },
+    'go': {
+        'url': "https://go.dev/dl/go1.21.6.windows-amd64.zip",
+        'zip_name': "go_portable.zip",
+        'extract_dir': "go_runtime",
+        'bin_path': "go/bin", # Go has 'go' folder in zip
+        'executables': {
+            'go': 'go.exe'
+        }
+    }
+}
+
+def is_tool_installed(name):
+    """Check if a tool is available in the current PATH."""
     try:
-        subprocess.run(["gcc", "--version"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, check=True)
-        return True
-    except (subprocess.CalledProcessError, FileNotFoundError):
+        # shutil.which is more reliable for simple presence check
+        return shutil.which(name) is not None
+    except:
         return False
 
-def setup_compiler():
+def setup_runtime(lang_key):
     """
-    Downloads and sets up w64devkit if gcc is not found.
-    Returns the path to the bin directory to be added to PATH, or None if not needed/failed.
+    Downloads and sets up a portable runtime for a specific language.
     """
-    if is_gcc_installed():
-        print("GCC is already installed.")
+    config = RUNTIME_CONFIG.get(lang_key)
+    if not config:
         return None
 
-    if COMPILER_BIN.exists() and (COMPILER_BIN / "gcc.exe").exists():
-        print("Portable compiler already exists.")
-        return str(COMPILER_BIN.absolute())
+    extract_to = RUNTIMES_DIR / config['extract_dir']
+    bin_dir = extract_to / config['bin_path']
+    
+    # Check if first executable exists
+    first_exe_name = list(config['executables'].keys())[0]
+    if os.path.exists(get_executable_path(lang_key, first_exe_name)):
+        return str(bin_dir.absolute())
 
-    print("GCC not found. Downloading portable MinGW (w64devkit)...")
-    
-    # Cleanup previous attempts if any
-    try:
-        if COMPILER_DIR.exists():
-            shutil.rmtree(COMPILER_DIR)
-    except Exception as e:
-        print(f"Warning: Failed to clean up existing compiler directory: {e}")
+    print(f"[{lang_key}] Portable runtime not found. Downloading...")
     
     try:
-        # Create compiler directory
-        COMPILER_DIR.mkdir(exist_ok=True)
+        RUNTIMES_DIR.mkdir(exist_ok=True)
+        # Also ensure extraction subfolder exists
+        extract_to.mkdir(exist_ok=True)
+        
+        zip_path = RUNTIMES_DIR / config['zip_name']
         
         # Download
-        zip_path = COMPILER_DIR / "w64devkit.zip"
-        print(f"Downloading from {COMPILER_URL}...")
-        response = requests.get(COMPILER_URL, stream=True)
+        print(f"[{lang_key}] Downloading from {config['url']}...")
+        response = requests.get(config['url'], stream=True)
         response.raise_for_status()
         
         with open(zip_path, 'wb') as f:
@@ -57,51 +94,68 @@ def setup_compiler():
                 f.write(chunk)
                 
         # Extract
-        print("Extracting compiler...")
+        print(f"[{lang_key}] Extracting into {extract_to}...")
         with zipfile.ZipFile(zip_path, 'r') as zip_ref:
-            zip_ref.extractall(COMPILER_DIR)
+            zip_ref.extractall(extract_to)
             
         # Cleanup zip
         os.remove(zip_path)
         
-        # Verify extraction
-        if not (COMPILER_BIN / "gcc.exe").exists():
-            print("Error: Compile binary not found after extraction.")
-            # Verify structure
-            print(f"Contents of {COMPILER_DIR}:")
-            for item in COMPILER_DIR.iterdir():
-                print(f" - {item.name}")
-            return None
-        
-        print("Compiler setup complete.")
-        return str(COMPILER_BIN.absolute())
+        print(f"[{lang_key}] Setup complete.")
+        return str(bin_dir.absolute())
         
     except Exception as e:
-        print(f"Failed to setup compiler: {e}")
-        # Clean up partial install
-        if zip_path.exists():
-            try:
-                os.remove(zip_path)
-            except:
-                pass
+        print(f"[{lang_key}] Failed to setup runtime: {e}")
         return None
 
-def get_gcc_path():
-    """Returns the absolute path to the gcc executable."""
-    # Check portable compiler first
-    portable_gcc = COMPILER_BIN / "gcc.exe"
-    if portable_gcc.exists():
-        return str(portable_gcc.absolute())
-    
-    # Fallback to system gcc
-    return "gcc"
+def setup_all_runtimes():
+    """Sets up all portable runtimes and adds them to PATH."""
+    paths = []
+    for lang in RUNTIME_CONFIG:
+        path = setup_runtime(lang)
+        if path:
+            paths.append(path)
+            if path not in os.environ["PATH"]:
+                os.environ["PATH"] = path + os.pathsep + os.environ["PATH"]
+    return paths
 
-def get_gplusplus_path():
-    """Returns the absolute path to the g++ executable."""
-    # Check portable compiler first
-    portable_gpp = COMPILER_BIN / "g++.exe"
-    if portable_gpp.exists():
-        return str(portable_gpp.absolute())
+def get_executable_path(lang_key, tool_name):
+    """Returns the absolute path to a specific tool."""
+    config = RUNTIME_CONFIG.get(lang_key)
+    if not config or tool_name not in config['executables']:
+        return tool_name # Fallback to system name
+
+    portable_path = RUNTIMES_DIR / config['extract_dir'] / config['bin_path'] / config['executables'][tool_name]
+    if portable_path.exists():
+        return str(portable_path.absolute())
     
-    # Fallback to system g++
-    return "g++"
+    return tool_name
+
+def get_runtime_root(lang_key):
+    """Returns the root directory of a runtime (e.g., GOROOT)."""
+    config = RUNTIME_CONFIG.get(lang_key)
+    if not config:
+        return None
+    
+    # For Go, the root is compiler/go_runtime/go
+    # For others, it might just be the extract_dir
+    root_path = RUNTIMES_DIR / config['extract_dir']
+    
+    # Handle nested folders like 'go/bin' -> root is 'go'
+    if config['bin_path']:
+        # If bin_path is 'go/bin', we want the part before 'bin'
+        bin_parts = Path(config['bin_path']).parts
+        if 'bin' in bin_parts:
+            # Join all parts before 'bin'
+            bin_idx = bin_parts.index('bin')
+            root_path = root_path.joinpath(*bin_parts[:bin_idx])
+            
+    if root_path.exists():
+        return str(root_path.absolute())
+    return None
+
+# Legacy aliases for backward compatibility
+def get_gcc_path(): return get_executable_path('c_cpp', 'gcc')
+def get_gplusplus_path(): return get_executable_path('c_cpp', 'g++')
+def setup_compiler(): return setup_runtime('c_cpp')
+

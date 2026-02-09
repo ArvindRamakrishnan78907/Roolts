@@ -13,7 +13,7 @@ import sys
 import re
 from flask import Blueprint, jsonify, request
 
-from utils.compiler_manager import get_gcc_path, get_gplusplus_path
+from utils.compiler_manager import get_gcc_path, get_gplusplus_path, get_executable_path, get_runtime_root
 
 executor_bp = Blueprint('executor', __name__)
 
@@ -40,13 +40,15 @@ def execute_code():
         if language == 'python':
             fname = filename if filename and filename.endswith('.py') else 'script.py'
             file_path = os.path.join(temp_dir, fname)
-            with open(file_path, 'w') as f:
+            with open(file_path, 'w', encoding='utf-8') as f:
                 f.write(code)
             
-            # Execute Python using the current interpreter
-            # Use -u for unbuffered output to improve speed of reading large outputs
+            # Execute Python using portable runtime if available
+            python_exe = get_executable_path('python', 'python')
+            
+            # Execute Python
             result = subprocess.run(
-                [sys.executable, '-u', file_path],
+                [python_exe, '-u', file_path],
                 cwd=temp_dir,
                 capture_output=True,
                 text=True,
@@ -99,8 +101,9 @@ def execute_code():
             with open(file_path, 'w', encoding='utf-8') as f:
                 f.write(code)
             
-            # Compile Java
-            compile_cmd = ['javac', '-d', '.', fname]
+            # Compile Java using portable javac if available
+            javac_exe = get_executable_path('java', 'javac')
+            compile_cmd = [javac_exe, '-d', '.', fname]
             
             compile_result = subprocess.run(
                 compile_cmd,
@@ -115,9 +118,10 @@ def execute_code():
                 error = "Compilation Error:\n" + compile_result.stderr
                 success = False
             else:
-                # Run Java
+                # Run Java using portable java if available
+                java_exe = get_executable_path('java', 'java')
                 run_result = subprocess.run(
-                    ['java', full_class_name],
+                    [java_exe, full_class_name],
                     cwd=temp_dir,
                     capture_output=True,
                     text=True,
@@ -208,6 +212,63 @@ def execute_code():
                 error = run_result.stderr
                 success = run_result.returncode == 0
 
+        elif language == 'go':
+            fname = filename if filename and filename.endswith('.go') else 'main.go'
+            file_path = os.path.join(temp_dir, fname)
+            exe_path = os.path.join(temp_dir, 'program')
+            if os.name == 'nt':
+                exe_path += '.exe'
+                
+            with open(file_path, 'w', encoding='utf-8') as f:
+                f.write(code)
+            
+            # Compile/Run Go using portable runtime if available
+            go_exe = get_executable_path('go', 'go')
+            go_root = get_runtime_root('go')
+            
+            # Prepare Go environment
+            go_env = os.environ.copy()
+            if go_root:
+                go_env['GOROOT'] = go_root
+                # Add bin to path just in case
+                go_env['PATH'] = os.path.join(go_root, 'bin') + os.pathsep + go_env.get('PATH', '')
+            
+            # Use temp_dir for GOPATH and GOCACHE to ensure portability/writability
+            go_env['GOPATH'] = os.path.join(temp_dir, 'gopath')
+            go_env['GOCACHE'] = os.path.join(temp_dir, 'gocache')
+            go_env['GOTOOLCHAIN'] = 'local'
+            
+            # Use 'go build' to follow the pattern
+            compile_cmd = [go_exe, 'build', '-o', exe_path, fname]
+            
+            compile_result = subprocess.run(
+                compile_cmd,
+                cwd=temp_dir,
+                capture_output=True,
+                text=True,
+                env=go_env,
+                timeout=60
+            )
+            
+            if compile_result.returncode != 0:
+                output = compile_result.stdout
+                error = "Go Build Error:\n" + compile_result.stderr
+                success = False
+            else:
+                # Run Go Executable
+                run_result = subprocess.run(
+                    [exe_path],
+                    cwd=temp_dir,
+                    capture_output=True,
+                    text=True,
+                    input=stdin_input,
+                    env=go_env,
+                    timeout=60
+                )
+                output = run_result.stdout
+                error = run_result.stderr
+                success = run_result.returncode == 0
+
         else:
             return jsonify({'success': False, 'error': f'Unsupported language: {language}'}), 400
 
@@ -217,12 +278,28 @@ def execute_code():
             'error': error
         })
 
+    except FileNotFoundError as e:
+        # distinct handling for missing executables
+        missing_file = e.filename or f"for {language}"
+        return jsonify({
+            'success': False,
+            'error': f'Compiler or interpreter not found: {missing_file}. Please install it and add to PATH.'
+        }), 400
     except subprocess.TimeoutExpired:
         return jsonify({
             'success': False,
             'error': 'Execution timed out (60s limit)'
         }), 408
     except Exception as e:
+        # Check if it's a "file not found" error that wasn't caught by FileNotFoundError
+        # (sometimes happens with shell=True or complex subprocess calls)
+        msg = str(e)
+        if "The system cannot find the file specified" in msg:
+             return jsonify({
+                'success': False,
+                'error': 'System could not find the required executable (python, node, javac, etc). Please ensure the language runtime is installed.'
+            }), 400
+            
         return jsonify({
             'success': False,
             'error': str(e)
@@ -245,5 +322,6 @@ def get_languages():
         {'id': 'javascript', 'name': 'JavaScript', 'version': 'Node.js'},
         {'id': 'java', 'name': 'Java', 'version': 'OpenJDK'},
         {'id': 'c', 'name': 'C', 'version': 'GCC'},
-        {'id': 'cpp', 'name': 'C++', 'version': 'G++'}
+        {'id': 'cpp', 'name': 'C++', 'version': 'G++'},
+        {'id': 'go', 'name': 'Go', 'version': '1.x'}
     ])
