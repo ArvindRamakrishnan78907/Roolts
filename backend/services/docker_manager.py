@@ -156,11 +156,57 @@ class DockerManager:
             )
             
             print(f"[OK] Created container: {container.id[:12]} for environment '{name}'")
+            
+            # For fullstack environments, install Python in the Node.js container
+            if env_type == 'fullstack':
+                try:
+                    self._setup_python_in_container(container.id)
+                except Exception as e:
+                    print(f"[WARN] Failed to install Python in fullstack environment: {e}")
+            
             return container.id, volume_name
             
         except Exception as e:
             print(f"[ERROR] Failed to create environment: {e}")
             raise Exception(f"Container creation failed: {str(e)}")
+    
+    def _setup_python_in_container(self, container_id: str) -> bool:
+        """
+        Install Python in a Node.js container for fullstack support.
+        
+        Args:
+            container_id: Docker container ID
+        
+        Returns:
+            True if Python installed successfully
+        """
+        try:
+            container = self.client.containers.get(container_id)
+            
+            # Start container if not running
+            if container.status != 'running':
+                container.start()
+                time.sleep(1)
+            
+            # Install Python3 and pip in Alpine
+            print(f"[INFO] Installing Python in fullstack container: {container_id[:12]}")
+            exec_result = container.exec_run(
+                cmd=['sh', '-c', 'apk add --no-cache python3 py3-pip && ln -sf /usr/bin/python3 /usr/bin/python'],
+                stdout=True,
+                stderr=True
+            )
+            
+            if exec_result.exit_code == 0:
+                print(f"[OK] Python installed successfully in container: {container_id[:12]}")
+                return True
+            else:
+                error_msg = exec_result.output.decode('utf-8') if exec_result.output else 'Unknown error'
+                print(f"[ERROR] Failed to install Python: {error_msg}")
+                return False
+                
+        except Exception as e:
+            print(f"[ERROR] Python installation failed: {e}")
+            return False
     
     def start_environment(self, container_id: str) -> bool:
         """
