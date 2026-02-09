@@ -46,6 +46,7 @@ import {
     FiMapPin,
     FiLayout,
     FiMic,
+    FiMicOff,
     FiGrid,
     FiMessageSquare
 } from 'react-icons/fi';
@@ -665,9 +666,6 @@ function CodeEditor() {
 
     // IMPORTANT: All hooks must be called before any early returns
     const { theme, format, features, backgroundImage, backgroundOpacity } = useSettingsStore();
-
-    // Enable auto-save to Docker container
-    useAutoSave();
 
     // Enable auto-save to Docker container
     useAutoSave();
@@ -2533,7 +2531,9 @@ function App() {
         sidebarOpen, toggleSidebar, openModal, addNotification, editorMinimized, toggleEditorMinimized,
         rightPanelOpen, toggleRightPanel, setRightPanelTab
     } = useUIStore();
-    const { files, activeFileId, markFileSaved, fetchFileContent } = useFileStore();
+    const {
+        files, activeFileId, markFileSaved, fetchFileContent, openFiles, setActiveFile, closeFile, updateFileContent, openFile, deleteFile, renameFile
+    } = useFileStore();
     const { isExecuting, setExecuting, setOutput, setError, setExecutionTime, addToHistory, setShowOutput } = useExecutionStore();
     const { setConnected, setRepositories, isConnected } = useGitHubStore();
     const [terminalOpen, setTerminalOpen] = useState(false);
@@ -2754,7 +2754,6 @@ function App() {
             return;
         }
 
-        const activeFile = getActiveFile();
         if (activeFile) {
             try {
                 await fileSyncService.pushFile(activeFile.path, activeFile.content);
@@ -2768,7 +2767,7 @@ function App() {
                 addNotification({ type: 'error', message: `Failed to save to Docker: ${error.message}` });
             }
         }
-    }, [activeFileId, addNotification, markFileSaved]);
+    };
 
     const handleRunCode = React.useCallback(async () => {
         // activeFile is a derived value, so we should get it from state or depend on it
@@ -2855,7 +2854,7 @@ function App() {
         }
 
         setExecuting(false);
-    }, [activeFile, activeFileId, addNotification, rightPanelOpen, toggleRightPanel, setRightPanelTab, setExecuting, setOutput, setError, setExecutionTime, setShowOutput, addToHistory]);
+    }, [activeFile, addNotification, rightPanelOpen, toggleRightPanel, setRightPanelTab, setExecuting, setOutput, setError, setExecutionTime, setShowOutput, addToHistory]);
 
     // Helper function to open Notes app in a new window
     const openNotesWindow = React.useCallback(() => {
