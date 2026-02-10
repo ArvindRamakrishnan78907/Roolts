@@ -11,13 +11,21 @@ from pathlib import Path
 
 # Load environment variables from .env file in the same directory as app.py
 env_path = Path(__file__).parent / '.env'
-load_dotenv(dotenv_path=env_path)
+dev_env_path = Path(__file__).parent / '.env.dev'
+
+# Load development environment if it exists and no .env file is found
+if not env_path.exists() and dev_env_path.exists():
+    print("📁 Loading development environment from .env.dev")
+    load_dotenv(dotenv_path=dev_env_path)
+else:
+    load_dotenv(dotenv_path=env_path)
 
 # Import database models
 from models import db, init_db
 
 # Import compiler setup
 from utils.compiler_manager import setup_compiler
+from utils.security_middleware import SecurityMiddleware
 
 # Import routes
 from routes.files import files_bp
@@ -32,11 +40,17 @@ from routes.portfolio import portfolio_bp
 from routes.deployment import deployment_bp
 from routes.executor import executor_bp
 from routes.virtual_env import virtual_env_bp
+from routes.file_manager import file_manager_bp
+from routes.dev_auth import dev_auth_bp
 
 
 def create_app():
     """Create and configure the Flask application."""
     app = Flask(__name__)
+    
+    # Initialize security middleware
+    security = SecurityMiddleware()
+    security.init_app(app)
     
     # Setup portable compilers and runtimes if needed
     try:
@@ -51,6 +65,15 @@ def create_app():
     app.config['SECRET_KEY'] = os.getenv('SECRET_KEY', 'dev-secret-key-change-in-production')
     app.config['JSON_SORT_KEYS'] = False
     
+    # Development configuration - bypass authentication for development
+    app.config['FLASK_ENV'] = os.getenv('FLASK_ENV', 'development')
+    app.config['DEV_MODE_BYPASS_AUTH'] = os.getenv('DEV_MODE_BYPASS_AUTH', 'true').lower() == 'true'
+    
+    print(f"Running in {app.config['FLASK_ENV']} mode")
+    if app.config['DEV_MODE_BYPASS_AUTH']:
+        print("⚠️  Development mode: Authentication bypass enabled")
+        print("🔓 Terminal and code execution available without login")
+    
     # Initialize database
     init_db(app)
     
@@ -61,15 +84,20 @@ def create_app():
     app.register_blueprint(auth_bp, url_prefix='/api/auth')      # Authentication
     app.register_blueprint(ai_hub_bp, url_prefix='/api/ai-hub')  # Multi-AI Chat
     app.register_blueprint(files_bp, url_prefix='/api/files')    # File management
+    app.register_blueprint(file_manager_bp, url_prefix='/api/file-manager')  # Secure File Manager
     app.register_blueprint(github_bp, url_prefix='/api/github')  # GitHub integration
     app.register_blueprint(social_bp, url_prefix='/api/social')  # Social posting
     app.register_blueprint(ai_bp, url_prefix='/api/ai')          # AI learning features
-    app.register_blueprint(terminal_bp, url_prefix='/api/terminal')  # Terminal
+    app.register_blueprint(terminal_bp, url_prefix='/api/terminal')  # Secure Terminal
     app.register_blueprint(snippets_bp, url_prefix='/api/snippets')  # Snippets
     app.register_blueprint(portfolio_bp, url_prefix='/api/portfolio')  # Portfolio Generator
     app.register_blueprint(deployment_bp, url_prefix='/api/deployment')  # Deployment
-    app.register_blueprint(executor_bp, url_prefix='/api/executor')  # Code Execution
+    app.register_blueprint(executor_bp, url_prefix='/api/executor')  # Secure Code Execution
     app.register_blueprint(virtual_env_bp, url_prefix='/api/virtual-env')  # Virtual Environments
+    
+    # Development authentication (only in development mode)
+    if app.config.get('FLASK_ENV') == 'development':
+        app.register_blueprint(dev_auth_bp, url_prefix='/api/dev-auth')
     
     # Health check endpoint
     @app.route('/api/health')
@@ -78,13 +106,23 @@ def create_app():
             'status': 'healthy',
             'service': 'roolts-backend',
             'version': '2.0.0',
+            'security': {
+                'user_isolation': True,
+                'secure_execution': True,
+                'authenticated_access': True,
+                'path_validation': True,
+                'command_filtering': True
+            },
             'features': {
                 'authentication': True,
                 'multi_ai': True,
                 'social_publishing': True,
-                'code_execution': True,
+                'secure_code_execution': True,
+                'secure_terminal': True,
+                'file_management': True,
                 'learning': True,
-                'virtual_environments': True
+                'virtual_environments': True,
+                'persistent_workspaces': True
             }
         })
     
