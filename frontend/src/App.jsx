@@ -84,6 +84,7 @@ import SyncManager from './components/SyncManager';
 
 import RemoteControlOverlay from './components/RemoteControlOverlay';
 import ScribbleOverlay from './components/ScribbleOverlay';
+import FileSyncEnvironment from './components/FileSyncEnvironment';
 
 // Memoized File Item Component
 const FileItem = React.memo(({ file, activeFileId, renamingId, openFile, handleContextMenu, handleRename, deleteFile, setRenamingId }) => {
@@ -3198,6 +3199,16 @@ function SettingsModal() {
                                             />
                                             <label>Scribble Feature (Canvas Overlay)</label>
                                         </div>
+
+                                        <div className="form-check" style={{ marginBottom: '0.75rem', display: 'flex', alignItems: 'center' }}>
+                                            <input
+                                                type="checkbox"
+                                                checked={experimental?.fileSyncEnvironment}
+                                                onChange={() => toggleExperimental('fileSyncEnvironment')}
+                                                style={{ marginRight: '8px' }}
+                                            />
+                                            <label>File Sync Environment (VS Code-like Interface)</label>
+                                        </div>
                                     </div>
                                 )
                             }
@@ -3367,6 +3378,7 @@ function App() {
     const { files, activeFileId, removeLastDrawing, clearDrawings, markFileSaved } = useFileStore();
     const { isExecuting, setExecuting, setOutput, setError, setExecutionTime, addToHistory, setShowOutput } = useExecutionStore();
     const { setConnected, setRepositories, isConnected } = useGitHubStore();
+    const { experimental } = useSettingsStore();
     const [terminalOpen, setTerminalOpen] = useState(false);
 
     const [isController, setIsController] = useState(false);
@@ -3687,185 +3699,192 @@ function App() {
 
     return (
         <div className="app">
-            {/* Header */}
-            <header className="header">
-                <div className="header__brand">
-                    <div className="header__logo">R</div>
-                    <h1 className="header__title">Roolts</h1>
-                </div>
-                <div className="header__actions">
-                    <button
-                        className="btn btn--success"
-                        onClick={handleRunCode}
-                        disabled={isExecuting || !activeFile}
-                        title="Run Code"
-                    >
-                        {isExecuting ? (
-                            <><span className="spinner" /> Running...</>
-                        ) : (
-                            <><FiPlay /> Run</>
-                        )}
-                    </button>
-                    <button className="btn btn--ghost btn--icon" onClick={handleSaveAs} title="Save As">
-                        <FiSave />
-                    </button>
-                    <button className="btn btn--ghost btn--icon" onClick={() => openModal('newFile')} title="New File">
-                        <FiPlus />
-                    </button>
-                    <button className="btn btn--ghost btn--icon" onClick={() => openModal('settings')} title="Settings">
-                        <FiSettings />
-                    </button>
-
-
-
-                </div>
-            </header>
-
-            {/* Main Content */}
-            <main className={`main ${editorMinimized ? 'main--editor-minimized' : ''}`} ref={mainRef}>
-                {/* Sidebar */}
-                <aside className={`sidebar ${!sidebarOpen ? 'sidebar--collapsed' : ''}`}>
-                    {sidebarOpen ? (
-                        <>
-                            <div className="sidebar__header">
-                                <span className="sidebar__title">Explorer</span>
-                                <button className="btn btn--ghost btn--icon" onClick={toggleSidebar}>
-                                    <FiChevronLeft />
-                                </button>
-                            </div>
-                            <div className="sidebar-content">
-                                <FileExplorer />
-                            </div>
-                            <div className="sidebar-footer">
-                                <button
-                                    className={`sidebar-terminal-btn ${terminalOpen ? 'sidebar-terminal-btn--active' : ''}`}
-                                    onClick={() => setTerminalOpen(!terminalOpen)}
-                                    title="Toggle Terminal"
-                                >
-                                    <FiTerminal size={16} />
-                                    <span>Terminal</span>
-                                    {terminalOpen && <FiChevronRight size={14} style={{ marginLeft: 'auto', transform: 'rotate(90deg)' }} />}
-                                </button>
-                            </div>
-                        </>
-                    ) : (
-                        <div className="sidebar-collapsed-buttons">
-                            <button
-                                className="btn btn--ghost btn--icon"
-                                onClick={toggleSidebar}
-                                title="Expand Explorer"
-                            >
-                                <FiChevronRight />
-                            </button>
-                            <button
-                                className={`btn btn--ghost btn--icon ${terminalOpen ? 'btn--active' : ''}`}
-                                onClick={() => setTerminalOpen(!terminalOpen)}
-                                title="Toggle Terminal"
-                            >
-                                <FiTerminal />
-                            </button>
+            {/* Render File Sync Environment if experimental feature is enabled */}
+            {experimental?.fileSyncEnvironment ? (
+                <FileSyncEnvironment />
+            ) : (
+                <>
+                    {/* Header */}
+                    <header className="header">
+                        <div className="header__brand">
+                            <div className="header__logo">R</div>
+                            <h1 className="header__title">Roolts</h1>
                         </div>
-                    )}
-                </aside>
+                        <div className="header__actions">
+                            <button
+                                className="btn btn--success"
+                                onClick={handleRunCode}
+                                disabled={isExecuting || !activeFile}
+                                title="Run Code"
+                            >
+                                {isExecuting ? (
+                                    <><span className="spinner" /> Running...</>
+                                ) : (
+                                    <><FiPlay /> Run</>
+                                )}
+                            </button>
+                            <button className="btn btn--ghost btn--icon" onClick={handleSaveAs} title="Save As">
+                                <FiSave />
+                            </button>
+                            <button className="btn btn--ghost btn--icon" onClick={() => openModal('newFile')} title="New File">
+                                <FiPlus />
+                            </button>
+                            <button className="btn btn--ghost btn--icon" onClick={() => openModal('settings')} title="Settings">
+                                <FiSettings />
+                            </button>
 
-                {/* Editor and Terminal Area */}
-                <div className={`editor-terminal-wrapper ${editorMinimized ? 'editor-terminal-wrapper--minimized' : ''}`}>
-                    {/* Editor */}
-                    <div className={`editor-container ${editorMinimized ? 'editor-container--minimized' : ''} ${terminalOpen ? 'editor-container--with-terminal' : ''}`}>
-                        {editorMinimized ? (
-                            <div className="editor-minimized-bar">
-                                <button
-                                    className="editor-minimized-bar__btn"
-                                    onClick={toggleEditorMinimized}
-                                    title="Expand Editor"
-                                >
-                                    <FiCode /> Editor
-                                </button>
-                            </div>
-                        ) : (
-                            <>
-                                <EditorTabs
-                                    isScribbleMode={isScribbleMode}
-                                    toggleScribbleMode={() => setIsScribbleMode(!isScribbleMode)}
-                                    scribbleTool={scribbleTool}
-                                    setScribbleTool={setScribbleTool}
-                                    scribbleColor={scribbleColor}
-                                    setScribbleColor={setScribbleColor}
-                                    onUndo={() => activeFileId && removeLastDrawing(activeFileId)}
-                                    onClear={() => activeFileId && clearDrawings(activeFileId)}
-                                />
-                                <CodeEditor
-                                    isScribbleMode={isScribbleMode}
-                                    scribbleTool={scribbleTool}
-                                    scribbleColor={scribbleColor}
-                                />
-                            </>
-                        )}
-                    </div>
 
-                    {/* Terminal Bottom Panel */}
-                    {terminalOpen && (
-                        <>
-                            <div
-                                className={`resize-handle resize-handle--vertical ${isResizing === 'terminal' ? 'resize-handle--active' : ''}`}
-                                onMouseDown={() => setIsResizing('terminal')}
-                            />
-                            <div className="terminal-bottom-panel" style={{ height: terminalHeight }}>
-                                <div className="terminal-panel-header">
-                                    <div className="terminal-panel-tabs">
-                                        <button className="terminal-panel-tab terminal-panel-tab--active">
-                                            <FiTerminal size={14} /> Terminal
+
+                        </div>
+                    </header>
+
+                    {/* Main Content */}
+                    <main className={`main ${editorMinimized ? 'main--editor-minimized' : ''}`} ref={mainRef}>
+                        {/* Sidebar */}
+                        <aside className={`sidebar ${!sidebarOpen ? 'sidebar--collapsed' : ''}`}>
+                            {sidebarOpen ? (
+                                <>
+                                    <div className="sidebar__header">
+                                        <span className="sidebar__title">Explorer</span>
+                                        <button className="btn btn--ghost btn--icon" onClick={toggleSidebar}>
+                                            <FiChevronLeft />
                                         </button>
                                     </div>
+                                    <div className="sidebar-content">
+                                        <FileExplorer />
+                                    </div>
+                                    <div className="sidebar-footer">
+                                        <button
+                                            className={`sidebar-terminal-btn ${terminalOpen ? 'sidebar-terminal-btn--active' : ''}`}
+                                            onClick={() => setTerminalOpen(!terminalOpen)}
+                                            title="Toggle Terminal"
+                                        >
+                                            <FiTerminal size={16} />
+                                            <span>Terminal</span>
+                                            {terminalOpen && <FiChevronRight size={14} style={{ marginLeft: 'auto', transform: 'rotate(90deg)' }} />}
+                                        </button>
+                                    </div>
+                                </>
+                            ) : (
+                                <div className="sidebar-collapsed-buttons">
                                     <button
                                         className="btn btn--ghost btn--icon"
-                                        onClick={() => setTerminalOpen(false)}
-                                        title="Close Terminal"
+                                        onClick={toggleSidebar}
+                                        title="Expand Explorer"
                                     >
-                                        <FiX size={14} />
+                                        <FiChevronRight />
+                                    </button>
+                                    <button
+                                        className={`btn btn--ghost btn--icon ${terminalOpen ? 'btn--active' : ''}`}
+                                        onClick={() => setTerminalOpen(!terminalOpen)}
+                                        title="Toggle Terminal"
+                                    >
+                                        <FiTerminal />
                                     </button>
                                 </div>
-                                <TerminalPanel />
+                            )}
+                        </aside>
+
+                        {/* Editor and Terminal Area */}
+                        <div className={`editor-terminal-wrapper ${editorMinimized ? 'editor-terminal-wrapper--minimized' : ''}`}>
+                            {/* Editor */}
+                            <div className={`editor-container ${editorMinimized ? 'editor-container--minimized' : ''} ${terminalOpen ? 'editor-container--with-terminal' : ''}`}>
+                                {editorMinimized ? (
+                                    <div className="editor-minimized-bar">
+                                        <button
+                                            className="editor-minimized-bar__btn"
+                                            onClick={toggleEditorMinimized}
+                                            title="Expand Editor"
+                                        >
+                                            <FiCode /> Editor
+                                        </button>
+                                    </div>
+                                ) : (
+                                    <>
+                                        <EditorTabs
+                                            isScribbleMode={isScribbleMode}
+                                            toggleScribbleMode={() => setIsScribbleMode(!isScribbleMode)}
+                                            scribbleTool={scribbleTool}
+                                            setScribbleTool={setScribbleTool}
+                                            scribbleColor={scribbleColor}
+                                            setScribbleColor={setScribbleColor}
+                                            onUndo={() => activeFileId && removeLastDrawing(activeFileId)}
+                                            onClear={() => activeFileId && clearDrawings(activeFileId)}
+                                        />
+                                        <CodeEditor
+                                            isScribbleMode={isScribbleMode}
+                                            scribbleTool={scribbleTool}
+                                            scribbleColor={scribbleColor}
+                                        />
+                                    </>
+                                )}
                             </div>
-                        </>
-                    )}
-                </div>
 
-                {/* Resize Handle for Right Panel */}
-                <div
-                    className={`resize-handle resize-handle--horizontal ${isResizing === 'right' ? 'resize-handle--active' : ''}`}
-                    onMouseDown={() => setIsResizing('right')}
-                />
+                            {/* Terminal Bottom Panel */}
+                            {terminalOpen && (
+                                <>
+                                    <div
+                                        className={`resize-handle resize-handle--vertical ${isResizing === 'terminal' ? 'resize-handle--active' : ''}`}
+                                        onMouseDown={() => setIsResizing('terminal')}
+                                    />
+                                    <div className="terminal-bottom-panel" style={{ height: terminalHeight }}>
+                                        <div className="terminal-panel-header">
+                                            <div className="terminal-panel-tabs">
+                                                <button className="terminal-panel-tab terminal-panel-tab--active">
+                                                    <FiTerminal size={14} /> Terminal
+                                                </button>
+                                            </div>
+                                            <button
+                                                className="btn btn--ghost btn--icon"
+                                                onClick={() => setTerminalOpen(false)}
+                                                title="Close Terminal"
+                                            >
+                                                <FiX size={14} />
+                                            </button>
+                                        </div>
+                                        <TerminalPanel />
+                                    </div>
+                                </>
+                            )}
+                        </div>
 
-                {/* Right Panel */}
-                <RightPanel style={{ width: rightPanelWidth }} editorMinimized={editorMinimized} />
-            </main>
+                        {/* Resize Handle for Right Panel */}
+                        <div
+                            className={`resize-handle resize-handle--horizontal ${isResizing === 'right' ? 'resize-handle--active' : ''}`}
+                            onMouseDown={() => setIsResizing('right')}
+                        />
 
-            {/* Status Bar */}
-            <StatusBar />
+                        {/* Right Panel */}
+                        <RightPanel style={{ width: rightPanelWidth }} editorMinimized={editorMinimized} />
+                    </main>
 
-            {/* Modals */}
-            <HighlightModal />
-            <NewFileModal />
-            <SettingsModal />
-            <PortfolioGeneratorModal />
-            <DeploymentModalComponent />
+                    {/* Status Bar */}
+                    <StatusBar />
 
-            {/* Data Sychronization */}
-            <SyncManager />
+                    {/* Modals */}
+                    <HighlightModal />
+                    <NewFileModal />
+                    <SettingsModal />
+                    <PortfolioGeneratorModal />
+                    <DeploymentModalComponent />
 
-            {/* Notifications */}
-            <Notifications />
+                    {/* Data Sychronization */}
+                    <SyncManager />
 
-            {/* Remote Control Overlay */}
-            <RemoteControlOverlay
-                isController={isController}
-                isBeingControlled={isBeingControlled}
-                onControlEnd={() => {
-                    setIsController(false);
-                    setIsBeingControlled(false);
-                }}
-            />
+                    {/* Notifications */}
+                    <Notifications />
+
+                    {/* Remote Control Overlay */}
+                    <RemoteControlOverlay
+                        isController={isController}
+                        isBeingControlled={isBeingControlled}
+                        onControlEnd={() => {
+                            setIsController(false);
+                            setIsBeingControlled(false);
+                        }}
+                    />
+                </>
+            )}
         </div>
     );
 }

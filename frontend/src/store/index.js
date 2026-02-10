@@ -408,7 +408,8 @@ export const useSettingsStore = create(
                 vimMode: false
             },
             experimental: {
-                scribble: false
+                scribble: false,
+                fileSyncEnvironment: false
             },
             scribblePenSize: 3,
             scribbleEraserSize: 15,

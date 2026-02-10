@@ -49,6 +49,36 @@ export const fileService = {
     save: (id) => api.post(`/files/${id}/save`)
 };
 
+// ============ File Sync Operations ============
+
+export const fileSyncApi = {
+    getTree: () => api.get('/file-sync/tree'),
+    readFile: (path) => api.get('/file-sync/read', { params: { path } }),
+    writeFile: (path, content, options = {}) => api.post('/file-sync/write', {
+        path,
+        content,
+        encoding: options.encoding || 'utf-8',
+        createDirectories: options.createDirectories !== false
+    }),
+    createItem: (path, type = 'file', content = '') => api.post('/file-sync/create', {
+        path,
+        type,
+        content
+    }),
+    deleteItem: (path) => api.delete('/file-sync/delete', { params: { path } }),
+    renameItem: (oldPath, newPath) => api.put('/file-sync/rename', {
+        oldPath,
+        newPath
+    }),
+    searchFiles: (query, options = {}) => api.get('/file-sync/search', {
+        params: {
+            query,
+            content: options.searchContent || false,
+            limit: options.limit || 50
+        }
+    })
+};
+
 // ============ GitHub Operations ============
 
 export const githubService = {

@@ -1,0 +1,501 @@
+/* File Explorer Styles - VS Code-like design */
+
+.file-explorer {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  background: #1e1e1e;
+  color: #cccccc;
+  font-family: 'Monaco', 'Menlo', 'Consolas', monospace;
+  font-size: 13px;
+  border-right: 1px solid #3e3e3e;
+  min-width: 240px;
+  max-width: 400px;
+  width: 300px;
+  user-select: none;
+}
+
+/* Header */
+.file-explorer-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 8px 12px;
+  background: #2d2d30;
+  border-bottom: 1px solid #3e3e3e;
+  min-height: 35px;
+}
+
+.header-title {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-weight: 600;
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: #cccccc;
+}
+
+.header-actions {
+  display: flex;
+  gap: 4px;
+}
+
+.header-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  background: transparent;
+  border: none;
+  color: #cccccc;
+  cursor: pointer;
+  border-radius: 3px;
+  transition: background-color 0.2s;
+}
+
+.header-btn:hover {
+  background: #3e3e3e;
+}
+
+.header-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.spinning {
+  animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
+/* Search */
+.file-search {
+  padding: 8px 12px;
+  border-bottom: 1px solid #3e3e3e;
+}
+
+.search-input-container {
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+
+.search-icon {
+  position: absolute;
+  left: 8px;
+  color: #858585;
+  font-size: 12px;
+}
+
+.search-input {
+  width: 100%;
+  padding: 4px 8px 4px 28px;
+  background: #3c3c3c;
+  border: 1px solid #3e3e3e;
+  border-radius: 3px;
+  color: #cccccc;
+  font-size: 12px;
+  outline: none;
+  transition: border-color 0.2s;
+}
+
+.search-input:focus {
+  border-color: #007acc;
+}
+
+.search-loading {
+  padding: 4px 0;
+  font-size: 11px;
+  color: #858585;
+}
+
+.search-results {
+  max-height: 200px;
+  overflow-y: auto;
+  margin-top: 4px;
+  border: 1px solid #3e3e3e;
+  border-radius: 3px;
+  background: #2d2d30;
+}
+
+.search-result-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 8px;
+  cursor: pointer;
+  border-bottom: 1px solid #3e3e3e;
+  transition: background-color 0.2s;
+}
+
+.search-result-item:hover {
+  background: #3e3e3e;
+}
+
+.search-result-item:last-child {
+  border-bottom: none;
+}
+
+.search-result-info {
+  flex: 1;
+  min-width: 0;
+}
+
+.search-result-info .file-name {
+  font-weight: 500;
+  margin-bottom: 2px;
+}
+
+.search-result-info .file-path {
+  font-size: 10px;
+  color: #858585;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.search-result-info .match-type {
+  font-size: 10px;
+  color: #007acc;
+  margin-top: 1px;
+}
+
+.search-no-results {
+  padding: 12px 8px;
+  text-align: center;
+  color: #858585;
+  font-size: 12px;
+}
+
+/* Error Message */
+.error-message {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 6px 12px;
+  background: #5a1d1d;
+  border-bottom: 1px solid #be1100;
+  color: #f48771;
+  font-size: 12px;
+}
+
+.error-message button {
+  background: none;
+  border: none;
+  color: #f48771;
+  cursor: pointer;
+  font-size: 14px;
+  padding: 0 4px;
+}
+
+/* File Tree */
+.file-tree {
+  flex: 1;
+  overflow-y: auto;
+  overflow-x: hidden;
+}
+
+.loading {
+  padding: 20px;
+  text-align: center;
+  color: #858585;
+}
+
+.tree-content {
+  padding: 4px 0;
+}
+
+/* File Items */
+.file-item-container {
+  width: 100%;
+}
+
+.file-item {
+  display: flex;
+  align-items: center;
+  width: 100%;
+  padding: 2px 4px;
+  cursor: pointer;
+  transition: background-color 0.2s;
+  position: relative;
+  min-height: 22px;
+}
+
+.file-item:hover {
+  background: #2a2d2e;
+}
+
+.file-item.selected {
+  background: #094771;
+  color: #ffffff;
+}
+
+.file-item-content {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  width: 100%;
+  overflow: hidden;
+}
+
+.folder-chevron {
+  display: flex;
+  align-items: center;
+  width: 16px;
+  height: 16px;
+  font-size: 10px;
+  color: #cccccc;
+}
+
+.file-icon {
+  display: flex;
+  align-items: center;
+  font-size: 14px;
+  color: #cccccc;
+  flex-shrink: 0;
+}
+
+.file-name {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 13px;
+}
+
+.folder-children {
+  width: 100%;
+}
+
+/* Connection Status */
+.connection-status {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 12px;
+  background: #2d2d30;
+  border-top: 1px solid #3e3e3e;
+  font-size: 11px;
+  color: #858585;
+}
+
+.status-indicator {
+  font-size: 8px;
+}
+
+.status-indicator.connected {
+  color: #4caf50;
+}
+
+.status-indicator.disconnected {
+  color: #f44336;
+}
+
+.status-text {
+  font-size: 10px;
+}
+
+/* Context Menu */
+.context-menu {
+  position: fixed;
+  background: #2d2d30;
+  border: 1px solid #3e3e3e;
+  border-radius: 3px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
+  padding: 4px 0;
+  z-index: 1000;
+  min-width: 180px;
+}
+
+.context-menu button {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 6px 12px;
+  background: none;
+  border: none;
+  color: #cccccc;
+  cursor: pointer;
+  font-size: 12px;
+  text-align: left;
+  transition: background-color 0.2s;
+}
+
+.context-menu button:hover {
+  background: #3e3e3e;
+}
+
+.menu-separator {
+  height: 1px;
+  background: #3e3e3e;
+  margin: 4px 0;
+}
+
+/* Modals */
+.modal-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.6);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 2000;
+}
+
+.modal {
+  background: #2d2d30;
+  border: 1px solid #3e3e3e;
+  border-radius: 6px;
+  padding: 20px;
+  min-width: 300px;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5);
+}
+
+.modal h3 {
+  margin: 0 0 16px 0;
+  color: #cccccc;
+  font-size: 16px;
+}
+
+.modal input {
+  width: 100%;
+  padding: 8px 12px;
+  background: #3c3c3c;
+  border: 1px solid #3e3e3e;
+  border-radius: 3px;
+  color: #cccccc;
+  font-size: 13px;
+  outline: none;
+  box-sizing: border-box;
+}
+
+.modal input:focus {
+  border-color: #007acc;
+}
+
+.modal-actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 16px;
+  justify-content: flex-end;
+}
+
+.modal-actions button {
+  padding: 6px 16px;
+  background: #3e3e3e;
+  border: 1px solid #3e3e3e;
+  border-radius: 3px;
+  color: #cccccc;
+  cursor: pointer;
+  font-size: 12px;
+  transition: all 0.2s;
+}
+
+.modal-actions button:hover {
+  background: #4e4e4e;
+}
+
+/* Scrollbar Styling */
+.file-tree::-webkit-scrollbar,
+.search-results::-webkit-scrollbar {
+  width: 8px;
+}
+
+.file-tree::-webkit-scrollbar-track,
+.search-results::-webkit-scrollbar-track {
+  background: #1e1e1e;
+}
+
+.file-tree::-webkit-scrollbar-thumb,
+.search-results::-webkit-scrollbar-thumb {
+  background: #424242;
+  border-radius: 4px;
+}
+
+.file-tree::-webkit-scrollbar-thumb:hover,
+.search-results::-webkit-scrollbar-thumb:hover {
+  background: #555555;
+}
+
+/* Responsive Design */
+@media (max-width: 768px) {
+  .file-explorer {
+    min-width: 200px;
+    width: 250px;
+  }
+  
+  .modal {
+    min-width: 250px;
+    margin: 20px;
+  }
+}
+
+/* File Type Icons - Enhanced with colors */
+.file-icon {
+  color: #cccccc;
+}
+
+/* Directory icons */
+.file-item .file-icon svg:first-child {
+  color: #dcb67a;
+}
+
+/* JavaScript/TypeScript files */
+.file-item[data-extension=".js"] .file-icon,
+.file-item[data-extension=".jsx"] .file-icon {
+  color: #f7df1e;
+}
+
+.file-item[data-extension=".ts"] .file-icon,
+.file-item[data-extension=".tsx"] .file-icon {
+  color: #3178c6;
+}
+
+/* Python files */
+.file-item[data-extension=".py"] .file-icon {
+  color: #3776ab;
+}
+
+/* HTML/CSS files */
+.file-item[data-extension=".html"] .file-icon {
+  color: #e34c26;
+}
+
+.file-item[data-extension=".css"] .file-icon,
+.file-item[data-extension=".scss"] .file-icon {
+  color: #1572b6;
+}
+
+/* JSON files */
+.file-item[data-extension=".json"] .file-icon {
+  color: #ffd700;
+}
+
+/* Markdown files */
+.file-item[data-extension=".md"] .file-icon {
+  color: #083fa1;
+}
+
+/* Animation for smooth interactions */
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(-10px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.modal {
+  animation: fadeIn 0.2s ease-out;
+}
+
+.context-menu {
+  animation: fadeIn 0.15s ease-out;
+}
