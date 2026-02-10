@@ -409,7 +409,7 @@ export const useSettingsStore = create(
             },
             experimental: {
                 scribble: false,
-                fileSyncEnvironment: false
+                fileSyncEnvironment: true
             },
             scribblePenSize: 3,
             scribbleEraserSize: 15,

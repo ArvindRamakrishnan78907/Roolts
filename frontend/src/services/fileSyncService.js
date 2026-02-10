@@ -8,7 +8,7 @@ import { io } from 'socket.io-client';
 
 const API_BASE_URL = import.meta.env.VITE_API_URL
     ? `${import.meta.env.VITE_API_URL}/api/file-sync`
-    : '/api/file-sync';
+    : 'http://localhost:5000/api/file-sync';
 
 // Create axios instance for file sync operations
 const fileSyncApi = axios.create({

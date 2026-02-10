@@ -44,6 +44,8 @@ const FileSyncEnvironment = () => {
         updateFileContent,
         closeFile,
         setActiveFile,
+        setFileTree,
+        setLoading,
         clearSyncErrors
     } = useFileSyncStore();
 
@@ -69,12 +71,34 @@ const FileSyncEnvironment = () => {
     const editorRef = useRef(null);
     const resizeRef = useRef(null);
 
+    // Load file tree from backend
+    const refreshFileTree = async () => {
+        try {
+            setLoading(true);
+            console.log('🔄 Refreshing file tree...');
+
+            const result = await fileSyncService.getFileTree();
+            console.log('📁 File tree result:', result);
+
+            if (result.success) {
+                setFileTree(result.data.tree);
+                console.log('✅ File tree updated with', result.data.tree?.length || 0, 'items');
+            } else {
+                console.error('❌ Failed to load file tree:', result.error);
+            }
+        } catch (error) {
+            console.error('💥 Error loading file tree:', error);
+        } finally {
+            setLoading(false);
+        }
+    };
+
     // Initialize file sync service
     useEffect(() => {
         const initializeFileSync = async () => {
             try {
                 await fileSyncService.initializeRealTime();
-                await loadFileTree();
+                await refreshFileTree();
 
                 // Set up real-time event handlers
                 fileSyncService.on('fileUpdated', handleFileUpdated);
@@ -110,13 +134,13 @@ const FileSyncEnvironment = () => {
 
     const handleFileCreated = useCallback((data) => {
         console.log('Real-time file created:', data.path);
-        loadFileTree();
+        refreshFileTree();
     }, []);
 
     const handleFileDeleted = useCallback((data) => {
         console.log('Real-time file deleted:', data.path);
         closeFile(data.path);
-        loadFileTree();
+        refreshFileTree();
     }, []);
 
     const handleFileRenamed = useCallback((data) => {
@@ -126,7 +150,7 @@ const FileSyncEnvironment = () => {
         if (openFile) {
             closeFile(data.oldPath);
         }
-        loadFileTree();
+        refreshFileTree();
     }, [files]);
 
     // Handle file selection from explorer
@@ -307,7 +331,7 @@ const FileSyncEnvironment = () => {
                     </button>
                     <button
                         className="header-btn"
-                        onClick={loadFileTree}
+                        onClick={refreshFileTree}
                         disabled={isLoading}
                         title="Refresh"
                     >
@@ -395,7 +419,7 @@ const FileSyncEnvironment = () => {
                                     <Terminal
                                         isVisible={showTerminal}
                                         onToggle={setShowTerminal}
-                                        onFileChange={loadFileTree}
+                                        onFileChange={refreshFileTree}
                                     />
                                 </div>
                             )}
@@ -406,7 +430,7 @@ const FileSyncEnvironment = () => {
                                 <FiFile size={48} />
                                 <h3>No File Open</h3>
                                 <p>Select a file from the explorer to start editing</p>
-                                <button onClick={loadFileTree} className="refresh-btn">
+                                <button onClick={refreshFileTree} className="refresh-btn">
                                     <FiRefreshCw /> Refresh File Explorer
                                 </button>
                             </div>
