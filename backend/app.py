@@ -41,6 +41,8 @@ from routes.deployment import deployment_bp
 from routes.executor import executor_bp
 from routes.virtual_env import virtual_env_bp
 from routes.file_manager import file_manager_bp
+from routes.file_sync import file_sync_bp
+from routes.file_sync_websockets import register_file_sync_events
 from routes.dev_auth import dev_auth_bp
 
 
@@ -85,6 +87,7 @@ def create_app():
     app.register_blueprint(ai_hub_bp, url_prefix='/api/ai-hub')  # Multi-AI Chat
     app.register_blueprint(files_bp, url_prefix='/api/files')    # File management
     app.register_blueprint(file_manager_bp, url_prefix='/api/file-manager')  # Secure File Manager
+    app.register_blueprint(file_sync_bp, url_prefix='/api/file-sync')  # Real-time File Sync
     app.register_blueprint(github_bp, url_prefix='/api/github')  # GitHub integration
     app.register_blueprint(social_bp, url_prefix='/api/social')  # Social posting
     app.register_blueprint(ai_bp, url_prefix='/api/ai')          # AI learning features
@@ -176,118 +179,153 @@ def create_app():
 # Create the app instance
 app = create_app()
 
-# Initialize SocketIO
-from flask_socketio import SocketIO, emit, join_room, leave_room
+# Initialize SocketIO with fallback
+try:
+    from flask_socketio import SocketIO, emit, join_room, leave_room
+    
+    socketio = SocketIO(app, cors_allowed_origins="*", async_mode='eventlet')
+    
+    # Store socketio instance in app for access by other modules
+    app.socketio = socketio
+    
+    # Register file sync WebSocket events
+    register_file_sync_events(socketio)
+    
+    SOCKETIO_AVAILABLE = True
+    print("SocketIO initialized successfully")
+    
+except ImportError:
+    print("Warning: Flask-SocketIO not installed. Real-time features disabled.")
+    SOCKETIO_AVAILABLE = False
+    socketio = None
+    
+    # Create dummy socketio for fallback
+    class DummySocketIO:
+        def emit(self, *args, **kwargs):
+            pass
+        def run(self, *args, **kwargs):
+            # Fallback to regular Flask development server
+            app.run(host=kwargs.get('host', '0.0.0.0'), 
+                   port=kwargs.get('port', 5000), 
+                   debug=kwargs.get('debug', False))
+    
+    socketio = DummySocketIO()
+    app.socketio = socketio
 
-socketio = SocketIO(app, cors_allowed_origins="*", async_mode='eventlet')
+# Socket Events (only if SocketIO is available)
+if SOCKETIO_AVAILABLE:
+    @socketio.on('connect')
+    def handle_connect():
+        print(f"Client connected: {request.sid}")
 
-# Socket Events
-@socketio.on('connect')
-def handle_connect():
-    print(f"Client connected: {request.sid}")
+    @socketio.on('disconnect')
+    def handle_disconnect():
+        print(f"Client disconnected: {request.sid}")
 
-@socketio.on('disconnect')
-def handle_disconnect():
-    print(f"Client disconnected: {request.sid}")
+    @socketio.on('join-room')
+    def handle_join_room(data):
+        room = data.get('roomId')
+        username = data.get('username')
+        join_room(room)
+        print(f"{username} joined room {room}")
+        emit('user-joined', {'username': username, 'sid': request.sid}, to=room, include_self=False)
 
-@socketio.on('join-room')
-def handle_join_room(data):
-    room = data.get('roomId')
-    username = data.get('username')
-    join_room(room)
-    print(f"{username} joined room {room}")
-    emit('user-joined', {'username': username, 'sid': request.sid}, to=room, include_self=False)
+    @socketio.on('signal')
+    def handle_signal(data):
+        # Relay WebRTC signals (offer, answer, candidate) to the specific peer
+        target_sid = data.get('target')
+        if target_sid:
+            emit('signal', {
+                'signal': data.get('signal'),
+                'sender': request.sid
+            }, room=target_sid)
 
-@socketio.on('signal')
-def handle_signal(data):
-    # Relay WebRTC signals (offer, answer, candidate) to the specific peer
-    target_sid = data.get('target')
-    if target_sid:
-        emit('signal', {
-            'signal': data.get('signal'),
-            'sender': request.sid
-        }, room=target_sid)
+    @socketio.on('request-control')
+    def handle_request_control(data):
+        room = data.get('roomId')
+        emit('request-control', {'requester': request.sid, 'username': data.get('username')}, to=room, include_self=False)
 
-@socketio.on('request-control')
-def handle_request_control(data):
-    room = data.get('roomId')
-    emit('request-control', {'requester': request.sid, 'username': data.get('username')}, to=room, include_self=False)
+    @socketio.on('grant-control')
+    def handle_grant_control(data):
+        target_sid = data.get('target')
+        if target_sid:
+            emit('grant-control', {'granted': True, 'granter': request.sid}, room=target_sid)
 
-@socketio.on('grant-control')
-def handle_grant_control(data):
-    target_sid = data.get('target')
-    if target_sid:
-        emit('grant-control', {'granted': True, 'granter': request.sid}, room=target_sid)
+    @socketio.on('revoke-control')
+    def handle_revoke_control(data):
+        room = data.get('roomId')
+        emit('revoke-control', {}, to=room, include_self=False)
 
-@socketio.on('revoke-control')
-def handle_revoke_control(data):
-    room = data.get('roomId')
-    emit('revoke-control', {}, to=room, include_self=False)
+    @socketio.on('code-change')
+    def handle_code_change(data):
+        room = data.get('roomId')
+        # Broadcast code changes to everyone else in the room
+        emit('code-change', data, to=room, include_self=False)
 
-@socketio.on('code-change')
-def handle_code_change(data):
-    room = data.get('roomId')
-    # Broadcast code changes to everyone else in the room
-    emit('code-change', data, to=room, include_self=False)
+    @socketio.on('cursor-move')
+    def handle_cursor_move(data):
+        room = data.get('roomId')
+        emit('cursor-move', data, to=room, include_self=False)
 
-@socketio.on('cursor-move')
-def handle_cursor_move(data):
-    room = data.get('roomId')
-    emit('cursor-move', data, to=room, include_self=False)
+    @socketio.on('chat-message')
+    def handle_chat_message(data):
+        room = data.get('roomId')
+        emit('chat-message', data, to=room, include_self=False)
 
-@socketio.on('chat-message')
-def handle_chat_message(data):
-    room = data.get('roomId')
-    emit('chat-message', data, to=room, include_self=False)
+    @socketio.on('track-toggle')
+    def handle_track_toggle(data):
+        room = data.get('roomId')
+        emit('track-toggle', data, to=room, include_self=False)
 
-@socketio.on('track-toggle')
-def handle_track_toggle(data):
-    room = data.get('roomId')
-    emit('track-toggle', data, to=room, include_self=False)
+    @socketio.on('leave-room')
+    def handle_leave_room(data):
+        room = data.get('roomId')
+        if room:
+            leave_room(room)
+            emit('user-left', {'sid': request.sid}, to=room, include_self=False)
 
-@socketio.on('leave-room')
-def handle_leave_room(data):
-    room = data.get('roomId')
-    if room:
-        leave_room(room)
-        emit('user-left', {'sid': request.sid}, to=room, include_self=False)
+    # Remote control events
+    @socketio.on('remote-mouse-move')
+    def handle_remote_mouse_move(data):
+        target_sid = data.get('target')
+        if target_sid:
+            emit('remote-mouse-move', data, room=target_sid)
 
-# Remote control events
-@socketio.on('remote-mouse-move')
-def handle_remote_mouse_move(data):
-    target_sid = data.get('target')
-    if target_sid:
-        emit('remote-mouse-move', data, room=target_sid)
+    @socketio.on('remote-click')
+    def handle_remote_click(data):
+        target_sid = data.get('target')
+        if target_sid:
+            emit('remote-click', data, room=target_sid)
 
-@socketio.on('remote-click')
-def handle_remote_click(data):
-    target_sid = data.get('target')
-    if target_sid:
-        emit('remote-click', data, room=target_sid)
+    @socketio.on('remote-keypress')
+    def handle_remote_keypress(data):
+        target_sid = data.get('target')
+        if target_sid:
+            emit('remote-keypress', data, room=target_sid)
 
-@socketio.on('remote-keypress')
-def handle_remote_keypress(data):
-    target_sid = data.get('target')
-    if target_sid:
-        emit('remote-keypress', data, room=target_sid)
-
-@socketio.on('remote-scroll')
-def handle_remote_scroll(data):
-    target_sid = data.get('target')
-    if target_sid:
-        emit('remote-scroll', data, room=target_sid)
+    @socketio.on('remote-scroll')
+    def handle_remote_scroll(data):
+        target_sid = data.get('target')
+        if target_sid:
+            emit('remote-scroll', data, room=target_sid)
 
 
 if __name__ == '__main__':
-    print("\n>>> Roolts Backend Starting (with SocketIO)...")
+    print("\\n>>> Roolts Backend Starting...")
     print("=" * 50)
     print("API Server: http://localhost:5000")
-    print("SocketIO:   Enabled")
-    print("Features:   Video Calling, Remote Control, Chat")
+    
+    if SOCKETIO_AVAILABLE:
+        print("SocketIO:   Enabled")
+        print("Features:   Video Calling, Remote Control, Chat, File Sync")
+    else:
+        print("SocketIO:   Disabled (flask-socketio not installed)")
+        print("Features:   Basic API only")
+    
     print("=" * 50)
-    print("\nPress Ctrl+C to stop\n")
+    print("\\nPress Ctrl+C to stop\\n")
     
     port = int(os.environ.get("PORT", 5000))
-    # Use socketio.run instead of app.run
+    # Use socketio.run if available, otherwise regular Flask
     socketio.run(app, host='0.0.0.0', port=port, debug=os.environ.get("FLASK_DEBUG", "True") == "True")
 

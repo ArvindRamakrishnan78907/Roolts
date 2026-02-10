@@ -3,6 +3,9 @@ flask>=3.0.0
 flask-cors>=4.0.0
 flask-sqlalchemy>=3.1.0
 
+# File System Monitoring
+watchdog>=3.0.0
+
 # Environment and Config
 python-dotenv>=1.0.0
 
