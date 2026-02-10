@@ -186,8 +186,54 @@ function FileExplorer() {
     const { openModal, addNotification } = useUIStore();
     const [renamingId, setRenamingId] = useState(null);
     const [contextMenu, setContextMenu] = useState(null);
+    const [isFileSyncEnabled, setIsFileSyncEnabled] = useState(false);
     const fileInputRef = React.useRef(null);
     const folderInputRef = React.useRef(null);
+
+    // File Sync Integration - seamlessly sync with backend
+    useEffect(() => {
+        const initFileSync = async () => {
+            try {
+                // Import file sync service dynamically
+                const { fileSyncService } = await import('./services/fileSyncService');
+                const { fileSyncApi } = await import('./services/api');
+
+                // Initialize connection
+                await fileSyncService.initializeRealTime();
+
+                // Check if backend has files and sync them
+                const result = await fileSyncApi.getTree();
+                if (result.data?.success && result.data?.tree?.length > 0) {
+                    for (const backendFile of result.data.tree) {
+                        if (!backendFile.isDirectory) {
+                            // Check if file already exists in store
+                            const existingFile = files.find(f => f.name === backendFile.name);
+                            if (!existingFile) {
+                                // Read content and add to store
+                                try {
+                                    const contentResult = await fileSyncApi.readFile(backendFile.path);
+                                    if (contentResult.data?.success) {
+                                        const language = getLanguageFromExtension(backendFile.name);
+                                        addFile(backendFile.name, contentResult.data.content || '', language);
+                                    }
+                                } catch (error) {
+                                    console.log('Could not sync file:', backendFile.name);
+                                }
+                            }
+                        }
+                    }
+                }
+
+                setIsFileSyncEnabled(true);
+                addNotification({ type: 'success', message: '🔄 File sync enabled' });
+            } catch (error) {
+                console.log('File sync not available:', error.message);
+                // Fail silently - file sync is optional
+            }
+        };
+
+        initFileSync();
+    }, []);
 
     // Close context menu on global click
     useEffect(() => {
@@ -394,7 +440,9 @@ function FileExplorer() {
                     </button>
                 </div>
             </div>
-            {(files || []).map((file) => (
+            {((files || []).filter((file, index, arr) =>
+                arr.findIndex(f => f.id === file.id) === index
+            )).map((file) => (
                 <FileItem
                     key={file.id}
                     file={file}
@@ -546,6 +594,7 @@ function FileExplorer() {
 function TerminalPanel() {
     const { lines, commandHistory, cwd, isRunning, addLine, addCommand, setCwd, setRunning, clearTerminal, getFromHistory } = useTerminalStore();
     const { addNotification } = useUIStore();
+    const { addFile, files } = useFileStore(); // Add file store for sync
     const [input, setInput] = useState('');
     const terminalRef = React.useRef(null);
     const inputRef = React.useRef(null);
@@ -565,6 +614,57 @@ function TerminalPanel() {
             terminalRef.current.scrollTop = terminalRef.current.scrollHeight;
         }
     }, [lines]);
+
+    // Check if command might affect files
+    const mightAffectFiles = (command) => {
+        const fileCommands = ['echo', 'copy', 'xcopy', 'move', 'del', 'mkdir', 'rmdir', 'type', 'fc', 'find', 'dir', 'ls', 'touch', 'rm', 'cp', 'mv'];
+        const cmdLower = command.toLowerCase().trim();
+        return fileCommands.some(cmd => cmdLower.startsWith(cmd)) || cmdLower.includes('>') || cmdLower.includes('>>');
+    };
+
+    // Sync files after terminal operations
+    const syncFilesAfterCommand = async (command) => {
+        if (!mightAffectFiles(command)) return;
+
+        try {
+            // Import file sync service dynamically  
+            const { fileSyncApi } = await import('./services/api');
+            const result = await fileSyncApi.getTree();
+
+            if (result.data?.success && result.data?.tree) {
+                // Check for new files and sync them
+                for (const backendFile of result.data.tree) {
+                    if (!backendFile.isDirectory) {
+                        const existingFile = files.find(f => f.name === backendFile.name);
+                        if (!existingFile) {
+                            try {
+                                const contentResult = await fileSyncApi.readFile(backendFile.path);
+                                if (contentResult.data?.success) {
+                                    const getLanguageFromExtension = (filename) => {
+                                        const ext = filename.split('.').pop().toLowerCase();
+                                        const langMap = {
+                                            'py': 'python', 'js': 'javascript', 'jsx': 'javascript',
+                                            'ts': 'typescript', 'tsx': 'typescript', 'java': 'java',
+                                            'cpp': 'cpp', 'c': 'c', 'html': 'html', 'css': 'css',
+                                            'json': 'json', 'md': 'markdown', 'txt': 'plaintext'
+                                        };
+                                        return langMap[ext] || 'plaintext';
+                                    };
+                                    const language = getLanguageFromExtension(backendFile.name);
+                                    addFile(backendFile.name, contentResult.data.content || '', language);
+                                }
+                            } catch (error) {
+                                console.log('Sync error for:', backendFile.name);
+                            }
+                        }
+                    }
+                }
+            }
+        } catch (error) {
+            // Fail silently - sync is optional
+            console.log('File sync not available');
+        }
+    };
 
     const handleSubmit = async (e) => {
         e.preventDefault();
@@ -605,6 +705,10 @@ function TerminalPanel() {
             if (result.cwd) {
                 setCwd(result.cwd);
             }
+
+            // Sync files after command execution
+            await syncFilesAfterCommand(command);
+
         } catch (error) {
             addLine({ type: 'error', content: `Error: ${error.message}` });
         }
@@ -3699,192 +3803,199 @@ function App() {
 
     return (
         <div className="app">
-            {/* Render File Sync Environment if experimental feature is enabled */}
-            {experimental?.fileSyncEnvironment ? (
-                <FileSyncEnvironment />
-            ) : (
-                <>
-                    {/* Header */}
-                    <header className="header">
-                        <div className="header__brand">
-                            <div className="header__logo">R</div>
-                            <h1 className="header__title">Roolts</h1>
-                        </div>
-                        <div className="header__actions">
+            {/* Header */}
+            <header className="header">
+                <div className="header__brand">
+                    <div className="header__logo">R</div>
+                    <h1 className="header__title">Roolts</h1>
+                </div>
+                <div className="header__actions">
+                    <button
+                        className="btn btn--success"
+                        onClick={handleRunCode}
+                        disabled={isExecuting || !activeFile}
+                        title="Run Code"
+                    >
+                        {isExecuting ? (
+                            <><span className="spinner" /> Running...</>
+                        ) : (
+                            <><FiPlay /> Run</>
+                        )}
+                    </button>
+                    <button className="btn btn--ghost btn--icon" onClick={handleSaveAs} title="Save As">
+                        <FiSave />
+                    </button>
+                    <button className="btn btn--ghost btn--icon" onClick={() => openModal('newFile')} title="New File">
+                        <FiPlus />
+                    </button>
+                    <button className="btn btn--ghost btn--icon" onClick={() => openModal('settings')} title="Settings">
+                        <FiSettings />
+                    </button>
+
+
+
+                </div>
+            </header>
+
+            {/* Main Content */}
+            <main className={`main ${editorMinimized ? 'main--editor-minimized' : ''}`} ref={mainRef}>
+                {/* Sidebar */}
+                <aside className={`sidebar ${!sidebarOpen ? 'sidebar--collapsed' : ''}`}>
+                    {sidebarOpen ? (
+                        <>
+                            <div className="sidebar__header">
+                                <span className="sidebar__title">
+                                    Explorer
+                                    <span
+                                        className="sync-indicator"
+                                        style={{
+                                            marginLeft: '8px',
+                                            fontSize: '10px',
+                                            opacity: 0.7,
+                                            color: '#4caf50'
+                                        }}
+                                        title="File sync enabled"
+                                    >
+                                        🔄
+                                    </span>
+                                </span>
+                                <button className="btn btn--ghost btn--icon" onClick={toggleSidebar}>
+                                    <FiChevronLeft />
+                                </button>
+                            </div>
+                            <div className="sidebar-content">
+                                <FileExplorer />
+                            </div>
+                            <div className="sidebar-footer">
+                                <button
+                                    className={`sidebar-terminal-btn ${terminalOpen ? 'sidebar-terminal-btn--active' : ''}`}
+                                    onClick={() => setTerminalOpen(!terminalOpen)}
+                                    title="Toggle Terminal"
+                                >
+                                    <FiTerminal size={16} />
+                                    <span>Terminal</span>
+                                    {terminalOpen && <FiChevronRight size={14} style={{ marginLeft: 'auto', transform: 'rotate(90deg)' }} />}
+                                </button>
+                            </div>
+                        </>
+                    ) : (
+                        <div className="sidebar-collapsed-buttons">
                             <button
-                                className="btn btn--success"
-                                onClick={handleRunCode}
-                                disabled={isExecuting || !activeFile}
-                                title="Run Code"
+                                className="btn btn--ghost btn--icon"
+                                onClick={toggleSidebar}
+                                title="Expand Explorer"
                             >
-                                {isExecuting ? (
-                                    <><span className="spinner" /> Running...</>
-                                ) : (
-                                    <><FiPlay /> Run</>
-                                )}
+                                <FiChevronRight />
                             </button>
-                            <button className="btn btn--ghost btn--icon" onClick={handleSaveAs} title="Save As">
-                                <FiSave />
+                            <button
+                                className={`btn btn--ghost btn--icon ${terminalOpen ? 'btn--active' : ''}`}
+                                onClick={() => setTerminalOpen(!terminalOpen)}
+                                title="Toggle Terminal"
+                            >
+                                <FiTerminal />
                             </button>
-                            <button className="btn btn--ghost btn--icon" onClick={() => openModal('newFile')} title="New File">
-                                <FiPlus />
-                            </button>
-                            <button className="btn btn--ghost btn--icon" onClick={() => openModal('settings')} title="Settings">
-                                <FiSettings />
-                            </button>
-
-
-
                         </div>
-                    </header>
+                    )}
+                </aside>
 
-                    {/* Main Content */}
-                    <main className={`main ${editorMinimized ? 'main--editor-minimized' : ''}`} ref={mainRef}>
-                        {/* Sidebar */}
-                        <aside className={`sidebar ${!sidebarOpen ? 'sidebar--collapsed' : ''}`}>
-                            {sidebarOpen ? (
-                                <>
-                                    <div className="sidebar__header">
-                                        <span className="sidebar__title">Explorer</span>
-                                        <button className="btn btn--ghost btn--icon" onClick={toggleSidebar}>
-                                            <FiChevronLeft />
+                {/* Editor and Terminal Area */}
+                <div className={`editor-terminal-wrapper ${editorMinimized ? 'editor-terminal-wrapper--minimized' : ''}`}>
+                    {/* Editor */}
+                    <div className={`editor-container ${editorMinimized ? 'editor-container--minimized' : ''} ${terminalOpen ? 'editor-container--with-terminal' : ''}`}>
+                        {editorMinimized ? (
+                            <div className="editor-minimized-bar">
+                                <button
+                                    className="editor-minimized-bar__btn"
+                                    onClick={toggleEditorMinimized}
+                                    title="Expand Editor"
+                                >
+                                    <FiCode /> Editor
+                                </button>
+                            </div>
+                        ) : (
+                            <>
+                                <EditorTabs
+                                    isScribbleMode={isScribbleMode}
+                                    toggleScribbleMode={() => setIsScribbleMode(!isScribbleMode)}
+                                    scribbleTool={scribbleTool}
+                                    setScribbleTool={setScribbleTool}
+                                    scribbleColor={scribbleColor}
+                                    setScribbleColor={setScribbleColor}
+                                    onUndo={() => activeFileId && removeLastDrawing(activeFileId)}
+                                    onClear={() => activeFileId && clearDrawings(activeFileId)}
+                                />
+                                <CodeEditor
+                                    isScribbleMode={isScribbleMode}
+                                    scribbleTool={scribbleTool}
+                                    scribbleColor={scribbleColor}
+                                />
+                            </>
+                        )}
+                    </div>
+
+                    {/* Terminal Bottom Panel */}
+                    {terminalOpen && (
+                        <>
+                            <div
+                                className={`resize-handle resize-handle--vertical ${isResizing === 'terminal' ? 'resize-handle--active' : ''}`}
+                                onMouseDown={() => setIsResizing('terminal')}
+                            />
+                            <div className="terminal-bottom-panel" style={{ height: terminalHeight }}>
+                                <div className="terminal-panel-header">
+                                    <div className="terminal-panel-tabs">
+                                        <button className="terminal-panel-tab terminal-panel-tab--active">
+                                            <FiTerminal size={14} /> Terminal
                                         </button>
                                     </div>
-                                    <div className="sidebar-content">
-                                        <FileExplorer />
-                                    </div>
-                                    <div className="sidebar-footer">
-                                        <button
-                                            className={`sidebar-terminal-btn ${terminalOpen ? 'sidebar-terminal-btn--active' : ''}`}
-                                            onClick={() => setTerminalOpen(!terminalOpen)}
-                                            title="Toggle Terminal"
-                                        >
-                                            <FiTerminal size={16} />
-                                            <span>Terminal</span>
-                                            {terminalOpen && <FiChevronRight size={14} style={{ marginLeft: 'auto', transform: 'rotate(90deg)' }} />}
-                                        </button>
-                                    </div>
-                                </>
-                            ) : (
-                                <div className="sidebar-collapsed-buttons">
                                     <button
                                         className="btn btn--ghost btn--icon"
-                                        onClick={toggleSidebar}
-                                        title="Expand Explorer"
+                                        onClick={() => setTerminalOpen(false)}
+                                        title="Close Terminal"
                                     >
-                                        <FiChevronRight />
-                                    </button>
-                                    <button
-                                        className={`btn btn--ghost btn--icon ${terminalOpen ? 'btn--active' : ''}`}
-                                        onClick={() => setTerminalOpen(!terminalOpen)}
-                                        title="Toggle Terminal"
-                                    >
-                                        <FiTerminal />
+                                        <FiX size={14} />
                                     </button>
                                 </div>
-                            )}
-                        </aside>
-
-                        {/* Editor and Terminal Area */}
-                        <div className={`editor-terminal-wrapper ${editorMinimized ? 'editor-terminal-wrapper--minimized' : ''}`}>
-                            {/* Editor */}
-                            <div className={`editor-container ${editorMinimized ? 'editor-container--minimized' : ''} ${terminalOpen ? 'editor-container--with-terminal' : ''}`}>
-                                {editorMinimized ? (
-                                    <div className="editor-minimized-bar">
-                                        <button
-                                            className="editor-minimized-bar__btn"
-                                            onClick={toggleEditorMinimized}
-                                            title="Expand Editor"
-                                        >
-                                            <FiCode /> Editor
-                                        </button>
-                                    </div>
-                                ) : (
-                                    <>
-                                        <EditorTabs
-                                            isScribbleMode={isScribbleMode}
-                                            toggleScribbleMode={() => setIsScribbleMode(!isScribbleMode)}
-                                            scribbleTool={scribbleTool}
-                                            setScribbleTool={setScribbleTool}
-                                            scribbleColor={scribbleColor}
-                                            setScribbleColor={setScribbleColor}
-                                            onUndo={() => activeFileId && removeLastDrawing(activeFileId)}
-                                            onClear={() => activeFileId && clearDrawings(activeFileId)}
-                                        />
-                                        <CodeEditor
-                                            isScribbleMode={isScribbleMode}
-                                            scribbleTool={scribbleTool}
-                                            scribbleColor={scribbleColor}
-                                        />
-                                    </>
-                                )}
+                                <TerminalPanel />
                             </div>
+                        </>
+                    )}
+                </div>
 
-                            {/* Terminal Bottom Panel */}
-                            {terminalOpen && (
-                                <>
-                                    <div
-                                        className={`resize-handle resize-handle--vertical ${isResizing === 'terminal' ? 'resize-handle--active' : ''}`}
-                                        onMouseDown={() => setIsResizing('terminal')}
-                                    />
-                                    <div className="terminal-bottom-panel" style={{ height: terminalHeight }}>
-                                        <div className="terminal-panel-header">
-                                            <div className="terminal-panel-tabs">
-                                                <button className="terminal-panel-tab terminal-panel-tab--active">
-                                                    <FiTerminal size={14} /> Terminal
-                                                </button>
-                                            </div>
-                                            <button
-                                                className="btn btn--ghost btn--icon"
-                                                onClick={() => setTerminalOpen(false)}
-                                                title="Close Terminal"
-                                            >
-                                                <FiX size={14} />
-                                            </button>
-                                        </div>
-                                        <TerminalPanel />
-                                    </div>
-                                </>
-                            )}
-                        </div>
+                {/* Resize Handle for Right Panel */}
+                <div
+                    className={`resize-handle resize-handle--horizontal ${isResizing === 'right' ? 'resize-handle--active' : ''}`}
+                    onMouseDown={() => setIsResizing('right')}
+                />
 
-                        {/* Resize Handle for Right Panel */}
-                        <div
-                            className={`resize-handle resize-handle--horizontal ${isResizing === 'right' ? 'resize-handle--active' : ''}`}
-                            onMouseDown={() => setIsResizing('right')}
-                        />
+                {/* Right Panel */}
+                <RightPanel style={{ width: rightPanelWidth }} editorMinimized={editorMinimized} />
+            </main>
 
-                        {/* Right Panel */}
-                        <RightPanel style={{ width: rightPanelWidth }} editorMinimized={editorMinimized} />
-                    </main>
+            {/* Status Bar */}
+            <StatusBar />
 
-                    {/* Status Bar */}
-                    <StatusBar />
+            {/* Modals */}
+            <HighlightModal />
+            <NewFileModal />
+            <SettingsModal />
+            <PortfolioGeneratorModal />
+            <DeploymentModalComponent />
 
-                    {/* Modals */}
-                    <HighlightModal />
-                    <NewFileModal />
-                    <SettingsModal />
-                    <PortfolioGeneratorModal />
-                    <DeploymentModalComponent />
+            {/* Data Sychronization */}
+            <SyncManager />
 
-                    {/* Data Sychronization */}
-                    <SyncManager />
+            {/* Notifications */}
+            <Notifications />
 
-                    {/* Notifications */}
-                    <Notifications />
-
-                    {/* Remote Control Overlay */}
-                    <RemoteControlOverlay
-                        isController={isController}
-                        isBeingControlled={isBeingControlled}
-                        onControlEnd={() => {
-                            setIsController(false);
-                            setIsBeingControlled(false);
-                        }}
-                    />
-                </>
-            )}
+            {/* Remote Control Overlay */}
+            <RemoteControlOverlay
+                isController={isController}
+                isBeingControlled={isBeingControlled}
+                onControlEnd={() => {
+                    setIsController(false);
+                    setIsBeingControlled(false);
+                }}
+            />
         </div>
     );
 }

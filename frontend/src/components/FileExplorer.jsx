@@ -38,6 +38,7 @@ const FileExplorer = ({ onFileSelect, onFileOpen, selectedFile, className = '' }
 
     const contextMenuRef = useRef(null);
     const searchInputRef = useRef(null);
+    const refreshTimeoutRef = useRef(null);
 
     // Initialize file sync service and load initial data
     useEffect(() => {
@@ -74,6 +75,11 @@ const FileExplorer = ({ onFileSelect, onFileOpen, selectedFile, className = '' }
             fileSyncService.off('directoryDeleted', handleDirectoryDeleted);
             fileSyncService.off('fileRenamed', handleFileRenamed);
             fileSyncService.off('directoryRenamed', handleDirectoryRenamed);
+
+            // Clear any pending refresh timeout
+            if (refreshTimeoutRef.current) {
+                clearTimeout(refreshTimeoutRef.current);
+            }
         };
     }, []);
 
@@ -115,22 +121,32 @@ const FileExplorer = ({ onFileSelect, onFileOpen, selectedFile, className = '' }
 
     // Load file tree from backend
     const refreshFileTree = async () => {
-        try {
-            setLoading(true);
-            const result = await fileSyncService.getFileTree();
+        if (loading) return; // Prevent concurrent refreshes
 
-            if (result.success) {
-                setFileTree(result.data.tree);
-                setError(null);
-            } else {
-                setError(result.error);
-            }
-        } catch (error) {
-            setError('Failed to load file tree');
-            console.error('Error loading file tree:', error);
-        } finally {
-            setLoading(false);
+        // Clear any pending refresh
+        if (refreshTimeoutRef.current) {
+            clearTimeout(refreshTimeoutRef.current);
         }
+
+        // Debounce the refresh to avoid multiple rapid calls
+        refreshTimeoutRef.current = setTimeout(async () => {
+            try {
+                setLoading(true);
+                const result = await fileSyncService.getFileTree();
+
+                if (result.success) {
+                    setFileTree(result.data.tree);
+                    setError(null);
+                } else {
+                    setError(result.error);
+                }
+            } catch (error) {
+                setError('Failed to load file tree');
+                console.error('Error loading file tree:', error);
+            } finally {
+                setLoading(false);
+            }
+        }, 100); // 100ms debounce
     };
 
     // Search files
@@ -349,7 +365,12 @@ const FileExplorer = ({ onFileSelect, onFileOpen, selectedFile, className = '' }
     const renderFileTree = (items, level = 0) => {
         if (!items || !Array.isArray(items)) return null;
 
-        return items.map((item) => {
+        // Remove duplicate paths to prevent repeated files
+        const uniqueItems = items.filter((item, index, arr) =>
+            arr.findIndex(i => i.path === item.path) === index
+        );
+
+        return uniqueItems.map((item) => {
             const isExpanded = expandedFolders.has(item.path);
             const isSelected = selectedFile?.path === item.path;
 
@@ -390,7 +411,12 @@ const FileExplorer = ({ onFileSelect, onFileOpen, selectedFile, className = '' }
             return <div className="search-no-results">No results found</div>;
         }
 
-        return searchResults.map((item, index) => (
+        // Remove duplicate paths to prevent repeated files
+        const uniqueResults = searchResults.filter((item, index, arr) =>
+            arr.findIndex(i => i.path === item.path) === index
+        );
+
+        return uniqueResults.map((item, index) => (
             <div
                 key={`${item.path}-${index}`}
                 className="search-result-item"

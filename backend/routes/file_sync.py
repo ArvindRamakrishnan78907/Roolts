@@ -300,7 +300,15 @@ def get_file_tree():
             except PermissionError:
                 pass  # Skip directories we can't read
                 
-            return items
+            # Remove duplicates by path to ensure unique items
+            seen_paths = set()
+            unique_items = []
+            for item in items:
+                if item['path'] not in seen_paths:
+                    seen_paths.add(item['path'])
+                    unique_items.append(item)
+            
+            return unique_items
         
         tree = build_tree(workspace_path)
         

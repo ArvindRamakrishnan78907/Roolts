@@ -87,27 +87,46 @@ export default App;
             })),
 
             addFile: (name, content = '', language = 'plaintext') => {
-                const id = Date.now().toString();
-                set((state) => ({
-                    files: [
-                        ...state.files,
-                        {
-                            id,
-                            name,
-                            path: `/${name}`,
-                            content,
-                            language,
-                            modified: false,
-                            highlights: [],
-                            drawings: []
-                        }
-                    ],
-                    openFiles: [...state.openFiles, id],
-                    activeFileId: id
-                }));
-                const newFile = get().files.find(f => f.id === id);
-                if (newFile) {
-                    get().setActiveFile(id);
+                set((state) => {
+                    const existingFile = state.files.find(f => f.name === name);
+                    if (existingFile) {
+                        // Update existing file
+                        return {
+                            files: state.files.map(f =>
+                                f.id === existingFile.id
+                                    ? { ...f, content, language, modified: false }
+                                    : f
+                            ),
+                            openFiles: state.openFiles.includes(existingFile.id)
+                                ? state.openFiles
+                                : [...state.openFiles, existingFile.id],
+                            activeFileId: existingFile.id
+                        };
+                    } else {
+                        // Add new file
+                        const id = Date.now().toString();
+                        return {
+                            files: [
+                                ...state.files,
+                                {
+                                    id,
+                                    name,
+                                    path: `/${name}`,
+                                    content,
+                                    language,
+                                    modified: false,
+                                    highlights: [],
+                                    drawings: []
+                                }
+                            ],
+                            openFiles: [...state.openFiles, id],
+                            activeFileId: id
+                        };
+                    }
+                });
+                const file = get().files.find(f => f.name === name);
+                if (file) {
+                    get().setActiveFile(file.id);
                     get().openFile(id);
                 }
                 return id;
@@ -220,11 +239,30 @@ export default App;
         }),
         {
             name: 'roolts-files-storage',
+            version: 1,
             partialize: (state) => ({
                 files: state.files,
                 activeFileId: state.activeFileId,
                 openFiles: state.openFiles
-            })
+            }),
+            migrate: (persistedState, version) => {
+                if (version === 0) {
+                    // Remove duplicate files by name, keeping the first occurrence
+                    const seenNames = new Set();
+                    const uniqueFiles = [];
+                    for (const file of persistedState.files || []) {
+                        if (!seenNames.has(file.name)) {
+                            seenNames.add(file.name);
+                            uniqueFiles.push(file);
+                        }
+                    }
+                    return {
+                        ...persistedState,
+                        files: uniqueFiles
+                    };
+                }
+                return persistedState;
+            }
         }
     )
 );
@@ -409,7 +447,7 @@ export const useSettingsStore = create(
             },
             experimental: {
                 scribble: false,
-                fileSyncEnvironment: true
+                fileSyncEnvironment: false
             },
             scribblePenSize: 3,
             scribbleEraserSize: 15,
