@@ -2,7 +2,14 @@ import React, { useState, useEffect, useRef, useMemo } from 'react';
 import ReactQuill, { Quill } from 'react-quill';
 import 'react-quill/dist/quill.snow.css';
 import ImageResize from 'quill-image-resize-module-react';
-import { FiPlus, FiTrash2, FiImage, FiCamera, FiVideo, FiChevronLeft, FiList, FiX, FiDownload, FiUpload, FiAlignLeft, FiAlignCenter, FiAlignRight } from 'react-icons/fi';
+import {
+    FiPlus, FiTrash2, FiImage, FiCamera, FiVideo, FiChevronLeft, FiList, FiX,
+    FiDownload, FiUpload, FiAlignLeft, FiAlignCenter, FiAlignRight,
+    FiRefreshCw, FiCheckCircle, FiCloud, FiLock
+} from 'react-icons/fi';
+import { SiMicrosoftonedrive, SiEvernote } from 'react-icons/si';
+import { useNotesStore, useUIStore } from '../../store';
+
 import Webcam from 'react-webcam';
 import { v4 as uuidv4 } from 'uuid';
 import { saveAs } from 'file-saver';
@@ -28,7 +35,178 @@ const loadNotesFromStorage = () => {
     }
 };
 
+const ProviderSelection = ({ onSelect }) => {
+
+
+    const providers = [
+        {
+            id: 'roolts',
+            name: 'Roolts Notes',
+            description: 'Local storage, fast and private.',
+            icon: <FiList size={32} />,
+            color: 'var(--accent-primary)',
+            isConnected: true
+        },
+        {
+            id: 'onedrive',
+            name: 'OneDrive',
+            description: 'Sync with your Microsoft account.',
+            icon: <SiMicrosoftonedrive size={32} />,
+            color: '#0078d4',
+            isConnected: onedrive.isConnected
+        },
+        {
+            id: 'evernote',
+            name: 'Evernote',
+            description: 'The best way to organize your life.',
+            icon: <SiEvernote size={32} />,
+            color: '#00a82d',
+            isConnected: evernote.isConnected
+        }
+    ];
+
+    return (
+        <div style={{ padding: '40px 20px', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '32px' }}>
+            <div style={{ textAlign: 'center' }}>
+                <h2 style={{ fontSize: '24px', fontWeight: 700, marginBottom: '8px' }}>Open Notes With...</h2>
+                <p style={{ color: 'var(--text-muted)' }}>Select your preferred storage provider</p>
+            </div>
+
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: '20px', width: '100%', maxWidth: '800px' }}>
+                {providers.map(p => (
+                    <div
+                        key={p.id}
+                        onClick={() => onSelect(p.id)}
+                        className="provider-card"
+                        style={{
+                            padding: '24px',
+                            background: 'var(--bg-secondary)',
+                            borderRadius: '12px',
+                            border: '1px solid var(--border-color)',
+                            cursor: 'pointer',
+                            transition: 'all 0.2s ease',
+                            display: 'flex',
+                            flexDirection: 'column',
+                            alignItems: 'center',
+                            textAlign: 'center',
+                            gap: '16px',
+                            position: 'relative'
+                        }}
+                    >
+                        <div style={{ color: p.color }}>{p.icon}</div>
+                        <div>
+                            <h3 style={{ fontSize: '18px', fontWeight: 600, marginBottom: '4px' }}>{p.name}</h3>
+                            <p style={{ fontSize: '13px', color: 'var(--text-muted)' }}>{p.description}</p>
+                        </div>
+                        {!p.isConnected && (
+                            <div style={{
+                                display: 'flex',
+                                alignItems: 'center',
+                                gap: '4px',
+                                fontSize: '11px',
+                                color: 'var(--warning)',
+                                marginTop: '8px'
+                            }}>
+                                <FiLock size={12} /> Needs Connection
+                            </div>
+                        )}
+                        {p.isConnected && p.id !== 'roolts' && (
+                            <div style={{
+                                display: 'flex',
+                                alignItems: 'center',
+                                gap: '4px',
+                                fontSize: '11px',
+                                color: 'var(--success)',
+                                marginTop: '8px'
+                            }}>
+                                <FiCheckCircle size={12} /> Connected
+                            </div>
+                        )}
+                    </div>
+                ))}
+            </div>
+
+            <style>{`
+                .provider-card:hover {
+                    transform: translateY(-4px);
+                    border-color: var(--accent-primary);
+                    background: var(--bg-tertiary);
+                    box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+                }
+            `}</style>
+        </div>
+    );
+};
+
+const RemoteNotesView = ({ provider, user, onDisconnect }) => {
+    const isOneDrive = provider === 'onedrive';
+    const icon = isOneDrive ? <SiMicrosoftonedrive size={48} /> : <SiEvernote size={48} />;
+    const color = isOneDrive ? '#0078d4' : '#00a82d';
+    const userName = user?.username || user?.name || 'Connected User';
+
+    return (
+        <div style={{ padding: '40px 20px', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '24px', textAlign: 'center' }}>
+            <div style={{ color }}>{icon}</div>
+            <div>
+                <h2 style={{ fontSize: '22px', fontWeight: 600 }}>{isOneDrive ? 'OneDrive' : 'Evernote'} Connected</h2>
+                <p style={{ color: 'var(--text-muted)', fontSize: '14px' }}>Logged in as <strong>{userName}</strong></p>
+            </div>
+
+            <div style={{
+                width: '100%',
+                maxWidth: '500px',
+                background: 'var(--bg-secondary)',
+                borderRadius: '12px',
+                border: '1px solid var(--border-color)',
+                padding: '24px',
+                display: 'flex',
+                flexDirection: 'column',
+                gap: '16px'
+            }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '12px', textAlign: 'left' }}>
+                    <FiCloud size={20} style={{ color: 'var(--accent-primary)' }} />
+                    <div>
+                        <div style={{ fontSize: '14px', fontWeight: 600 }}>Cloud Sync Active</div>
+                        <div style={{ fontSize: '12px', color: 'var(--text-muted)' }}>Your notes are being synced directly with {isOneDrive ? 'Microsoft' : 'Evernote'}.</div>
+                    </div>
+                </div>
+
+                <div style={{ height: '1px', background: 'var(--border-color)' }}></div>
+
+                <div style={{ fontSize: '13px', color: 'var(--text-muted)', fontStyle: 'italic' }}>
+                    Integration Note: You are now using the official {isOneDrive ? 'OneDrive' : 'Evernote'} storage. Changes made here will reflect in your cloud account.
+                </div>
+
+                <button
+                    onClick={onDisconnect}
+                    className="btn btn--danger"
+                    style={{ marginTop: '12px' }}
+                >
+                    Disconnect {isOneDrive ? 'OneDrive' : 'Evernote'}
+                </button>
+            </div>
+
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', width: '100%', maxWidth: '500px' }}>
+                <p style={{ fontSize: '13px', color: 'var(--text-muted)' }}>Remote Notes (Cached/Synced)</p>
+                <div style={{
+                    padding: '16px',
+                    border: '1px dashed var(--border-color)',
+                    borderRadius: '8px',
+                    color: 'var(--text-muted)',
+                    fontSize: '13px'
+                }}>
+                    No remote notes found yet. Start creating to sync!
+                </div>
+            </div>
+        </div>
+    );
+};
+
 const NotesApp = ({ onBack, isWindowed }) => {
+    const { selectedProvider, setProvider } = useNotesStore();
+    const { onedrive, evernote } = { onedrive: { isConnected: false }, evernote: { isConnected: false } }; // Mock for now
+    const { addNotification } = useUIStore();
+
     const [notes, setNotes] = useState([]);
     const [activeNote, setActiveNote] = useState(null);
     const [showList, setShowList] = useState(false);
@@ -56,7 +234,14 @@ const NotesApp = ({ onBack, isWindowed }) => {
             ]
         },
         imageResize: {
-            parchment: Quill.import('parchment'),
+            parchment: (() => {
+                try {
+                    return Quill.import('parchment');
+                } catch (e) {
+                    console.error('Failed to import parchment for Quill:', e);
+                    return null;
+                }
+            })(),
             modules: ['Resize', 'DisplaySize']
         },
         keyboard: {
@@ -92,12 +277,57 @@ const NotesApp = ({ onBack, isWindowed }) => {
     };
 
     useEffect(() => {
-        const loaded = loadNotesFromStorage();
-        setNotes(loaded.sort((a, b) => new Date(b.updatedAt) - new Date(a.updatedAt)));
-        if (loaded.length > 0) {
-            setActiveNote(loaded[0]);
+        if (selectedProvider === 'roolts') {
+            const loaded = loadNotesFromStorage();
+            setNotes(loaded.sort((a, b) => new Date(b.updatedAt) - new Date(a.updatedAt)));
+            if (loaded.length > 0) {
+                setActiveNote(loaded[0]);
+            }
         }
-    }, []);
+    }, [selectedProvider]);
+
+    const handleConnectOneDrive = async () => {
+        try {
+            // Social service removed
+            if (response.data.auth_url) {
+                window.location.href = response.data.auth_url;
+            }
+        } catch (error) {
+            addNotification({ type: 'error', message: 'Failed to connect to OneDrive' });
+        }
+    };
+
+    const handleConnectEvernote = async () => {
+        try {
+            // Social service removed
+            if (response.data.auth_url) {
+                window.location.href = response.data.auth_url;
+            }
+        } catch (error) {
+            addNotification({ type: 'error', message: 'Failed to connect to Evernote' });
+        }
+    };
+
+    const handleProviderSelect = (providerId) => {
+        if (providerId === 'onedrive' && !onedrive.isConnected) {
+            handleConnectOneDrive();
+            return;
+        }
+        if (providerId === 'evernote' && !evernote.isConnected) {
+            handleConnectEvernote();
+            return;
+        }
+        setProvider(providerId);
+    };
+
+    const handleDisconnect = () => {
+        if (selectedProvider === 'roolts') {
+            setProvider(null);
+            return;
+        }
+        // Other providers removed
+        setProvider(null);
+    };
 
     useEffect(() => {
         if (activeNote) {
@@ -108,38 +338,6 @@ const NotesApp = ({ onBack, isWindowed }) => {
             setEditorContent('');
         }
     }, [activeNote]);
-
-    const saveNote = () => {
-        if (!activeNote) return;
-        const updated = { ...activeNote, title: editorTitle, content: editorContent, updatedAt: new Date().toISOString() };
-        const newNotes = notes.map(n => n.id === updated.id ? updated : n);
-        setNotes(newNotes);
-        setActiveNote(updated);
-        saveNotesToStorage(newNotes);
-    };
-
-    const createNote = () => {
-        const newNote = {
-            id: uuidv4(),
-            title: 'New Note',
-            content: '',
-            createdAt: new Date().toISOString(),
-            updatedAt: new Date().toISOString()
-        };
-        const newNotes = [newNote, ...notes];
-        setNotes(newNotes);
-        setActiveNote(newNote);
-        setShowList(false);
-        saveNotesToStorage(newNotes);
-    };
-
-    const deleteNote = () => {
-        if (!activeNote || !window.confirm('Delete this note?')) return;
-        const remaining = notes.filter(n => n.id !== activeNote.id);
-        setNotes(remaining);
-        setActiveNote(remaining[0] || null);
-        saveNotesToStorage(remaining);
-    };
 
     // Track selection changes to enable/disable delete button for media
     useEffect(() => {
@@ -202,6 +400,75 @@ const NotesApp = ({ onBack, isWindowed }) => {
             quill.off('selection-change', handler);
         };
     }, [quillRef.current]);
+
+    if (!selectedProvider) {
+        return (
+            <div style={{ display: 'flex', flexDirection: 'column', height: '100%', background: 'var(--bg-primary)', color: 'var(--text-primary)' }}>
+                <div style={{ display: 'flex', alignItems: 'center', padding: '8px 12px', borderBottom: '1px solid var(--border-color)' }}>
+                    {!isWindowed && onBack && (
+                        <button onClick={onBack} className="btn btn--ghost btn--icon"><FiChevronLeft /></button>
+                    )}
+                    <span style={{ fontWeight: 600, marginLeft: '8px' }}>Notes Provider</span>
+                </div>
+                <div style={{ flex: 1, overflowY: 'auto' }}>
+                    <ProviderSelection onSelect={handleProviderSelect} />
+                </div>
+            </div>
+        );
+    }
+
+    if (selectedProvider !== 'roolts') {
+        const currentUser = selectedProvider === 'onedrive' ? onedrive.user : evernote.user;
+        return (
+            <div style={{ display: 'flex', flexDirection: 'column', height: '100%', background: 'var(--bg-primary)', color: 'var(--text-primary)' }}>
+                <div style={{ display: 'flex', alignItems: 'center', padding: '8px 12px', borderBottom: '1px solid var(--border-color)' }}>
+                    {!isWindowed && onBack && (
+                        <button onClick={onBack} className="btn btn--ghost btn--icon"><FiChevronLeft /></button>
+                    )}
+                    <span style={{ fontWeight: 600, marginLeft: '8px' }}>{selectedProvider === 'onedrive' ? 'OneDrive' : 'Evernote'} Notes</span>
+                </div>
+                <div style={{ flex: 1, overflowY: 'auto' }}>
+                    <RemoteNotesView
+                        provider={selectedProvider}
+                        user={currentUser}
+                        onDisconnect={handleDisconnect}
+                    />
+                </div>
+            </div>
+        );
+    }
+
+    const saveNote = () => {
+        if (!activeNote) return;
+        const updated = { ...activeNote, title: editorTitle, content: editorContent, updatedAt: new Date().toISOString() };
+        const newNotes = notes.map(n => n.id === updated.id ? updated : n);
+        setNotes(newNotes);
+        setActiveNote(updated);
+        saveNotesToStorage(newNotes);
+    };
+
+    const createNote = () => {
+        const newNote = {
+            id: uuidv4(),
+            title: 'New Note',
+            content: '',
+            createdAt: new Date().toISOString(),
+            updatedAt: new Date().toISOString()
+        };
+        const newNotes = [newNote, ...notes];
+        setNotes(newNotes);
+        setActiveNote(newNote);
+        setShowList(false);
+        saveNotesToStorage(newNotes);
+    };
+
+    const deleteNote = () => {
+        if (!activeNote || !window.confirm('Delete this note?')) return;
+        const remaining = notes.filter(n => n.id !== activeNote.id);
+        setNotes(remaining);
+        setActiveNote(remaining[0] || null);
+        saveNotesToStorage(remaining);
+    };
 
     const deleteSelectedMedia = () => {
         const quill = quillRef.current?.getEditor();
@@ -533,6 +800,7 @@ ${processedContent}
                 </div>
                 <button onClick={createNote} onKeyDown={(e) => handleButtonKeyDown(e, createNote)} className="btn btn--ghost btn--icon" title="New Note"><FiPlus /></button>
                 <button onClick={deleteNote} onKeyDown={(e) => handleButtonKeyDown(e, deleteNote)} className="btn btn--ghost btn--icon" title="Delete" style={{ color: 'var(--warning)' }}><FiTrash2 /></button>
+                <div style={{ width: '1px', height: '20px', background: 'var(--border-color)', margin: '0 4px' }}></div>
             </div>
 
             {/* Notes List */}

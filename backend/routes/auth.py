@@ -28,6 +28,16 @@ LINKEDIN_CLIENT_ID = os.getenv('LINKEDIN_CLIENT_ID', '')
 LINKEDIN_CLIENT_SECRET = os.getenv('LINKEDIN_CLIENT_SECRET', '')
 LINKEDIN_REDIRECT_URI = os.getenv('LINKEDIN_REDIRECT_URI', 'http://localhost:3000/callback/linkedin')
 
+# OneDrive / Microsoft Graph Configuration
+ONEDRIVE_CLIENT_ID = os.getenv('ONEDRIVE_CLIENT_ID', '')
+ONEDRIVE_CLIENT_SECRET = os.getenv('ONEDRIVE_CLIENT_SECRET', '')
+ONEDRIVE_REDIRECT_URI = os.getenv('ONEDRIVE_REDIRECT_URI', 'http://localhost:3000/callback/onedrive')
+
+# Evernote Configuration (Production/Sandbox URLs handled in routes)
+EVERNOTE_CONSUMER_KEY = os.getenv('EVERNOTE_CONSUMER_KEY', '')
+EVERNOTE_CONSUMER_SECRET = os.getenv('EVERNOTE_CONSUMER_SECRET', '')
+EVERNOTE_REDIRECT_URI = os.getenv('EVERNOTE_REDIRECT_URI', 'http://localhost:3000/callback/evernote')
+
 
 def create_jwt_token(user_id):
     """Create a JWT token for a user."""
@@ -396,6 +406,195 @@ def linkedin_callback():
     return jsonify({
         'message': 'LinkedIn connected successfully',
         'user_id': linkedin_user.get('id')
+    })
+
+
+# ============ Social OAuth - OneDrive ============
+
+@auth_bp.route('/onedrive/connect', methods=['GET'])
+@require_auth
+def onedrive_connect(user):
+    """Initiate OneDrive OAuth flow."""
+    if not ONEDRIVE_CLIENT_ID:
+        return jsonify({
+            'error': 'OneDrive OAuth not configured',
+            'message': 'Set ONEDRIVE_CLIENT_ID and ONEDRIVE_CLIENT_SECRET'
+        }), 400
+    
+    state = jwt.encode({'user_id': user.id}, JWT_SECRET, algorithm=JWT_ALGORITHM)
+    
+    auth_url = (
+        f"https://login.microsoftonline.com/common/oauth2/v2.0/authorize?"
+        f"client_id={ONEDRIVE_CLIENT_ID}&"
+        f"response_type=code&"
+        f"redirect_uri={ONEDRIVE_REDIRECT_URI}&"
+        f"response_mode=query&"
+        f"scope=files.readwrite.all%20offline_access%20User.Read&"
+        f"state={state}"
+    )
+    
+    return jsonify({'auth_url': auth_url})
+
+
+@auth_bp.route('/onedrive/callback', methods=['POST'])
+def onedrive_callback():
+    """Handle OneDrive OAuth callback."""
+    data = request.get_json()
+    code = data.get('code')
+    state = data.get('state')
+    
+    if not code or not state:
+        return jsonify({'error': 'Code and state required'}), 400
+    
+    try:
+        state_payload = jwt.decode(state, JWT_SECRET, algorithms=[JWT_ALGORITHM])
+        user_id = state_payload['user_id']
+    except:
+        return jsonify({'error': 'Invalid state'}), 400
+    
+    user = User.query.get(user_id)
+    if not user:
+        return jsonify({'error': 'User not found'}), 404
+    
+    # Exchange code for tokens
+    token_response = requests.post(
+        'https://login.microsoftonline.com/common/oauth2/v2.0/token',
+        data={
+            'client_id': ONEDRIVE_CLIENT_ID,
+            'client_secret': ONEDRIVE_CLIENT_SECRET,
+            'code': code,
+            'redirect_uri': ONEDRIVE_REDIRECT_URI,
+            'grant_type': 'authorization_code'
+        }
+    )
+    
+    if token_response.status_code != 200:
+        return jsonify({'error': 'Failed to exchange code', 'details': token_response.text}), 400
+    
+    tokens = token_response.json()
+    
+    # Get user info
+    user_response = requests.get(
+        'https://graph.microsoft.com/v1.0/me',
+        headers={'Authorization': f"Bearer {tokens['access_token']}"}
+    )
+    
+    od_user = user_response.json()
+    
+    # Save or update token
+    existing = SocialToken.query.filter_by(user_id=user.id, platform='onedrive').first()
+    
+    if existing:
+        existing.access_token = tokens['access_token']
+        existing.refresh_token = tokens.get('refresh_token')
+        existing.expires_at = datetime.utcnow() + timedelta(seconds=tokens.get('expires_in', 3600))
+        existing.platform_user_id = od_user.get('id')
+        existing.platform_username = od_user.get('userPrincipalName')
+    else:
+        social_token = SocialToken(
+            user_id=user.id,
+            platform='onedrive',
+            access_token=tokens['access_token'],
+            refresh_token=tokens.get('refresh_token'),
+            expires_at=datetime.utcnow() + timedelta(seconds=tokens.get('expires_in', 3600)),
+            platform_user_id=od_user.get('id'),
+            platform_username=od_user.get('userPrincipalName')
+        )
+        db.session.add(social_token)
+    
+    db.session.commit()
+    
+    return jsonify({
+        'message': 'OneDrive connected successfully',
+        'username': od_user.get('userPrincipalName')
+    })
+
+
+# ============ Social OAuth - Evernote ============
+
+@auth_bp.route('/evernote/connect', methods=['GET'])
+@require_auth
+def evernote_connect(user):
+    """Initiate Evernote OAuth flow (Note: Evernote uses OAuth 1.0 but can also support OAuth 2.0)."""
+    # Using generic structure for Evernote OAuth 2.0 if available, but Evernote typically uses 1.0a.
+    # For simplicity and consistency with the rest of the app, we'll implement a skeleton that can be filled.
+    if not EVERNOTE_CONSUMER_KEY:
+        return jsonify({
+            'error': 'Evernote OAuth not configured',
+            'message': 'Set EVERNOTE_CONSUMER_KEY and EVERNOTE_CONSUMER_SECRET'
+        }), 400
+    
+    state = jwt.encode({'user_id': user.id}, JWT_SECRET, algorithm=JWT_ALGORITHM)
+    
+    # Example Evernote OAuth 2.0 (if using their new API, otherwise 1.0a is quite different)
+    auth_url = (
+        f"https://www.evernote.com/oauth20/authorize?"
+        f"client_id={EVERNOTE_CONSUMER_KEY}&"
+        f"response_type=code&"
+        f"redirect_uri={EVERNOTE_REDIRECT_URI}&"
+        f"state={state}"
+    )
+    
+    return jsonify({'auth_url': auth_url})
+
+
+@auth_bp.route('/evernote/callback', methods=['POST'])
+def evernote_callback():
+    """Handle Evernote OAuth callback."""
+    data = request.get_json()
+    code = data.get('code')
+    state = data.get('state')
+    
+    if not code or not state:
+        return jsonify({'error': 'Code and state required'}), 400
+    
+    try:
+        state_payload = jwt.decode(state, JWT_SECRET, algorithms=[JWT_ALGORITHM])
+        user_id = state_payload['user_id']
+    except:
+        return jsonify({'error': 'Invalid state'}), 400
+    
+    user = User.query.get(user_id)
+    if not user:
+        return jsonify({'error': 'User not found'}), 404
+    
+    # Exchange code for tokens
+    token_response = requests.post(
+        'https://www.evernote.com/oauth20/token',
+        data={
+            'grant_type': 'authorization_code',
+            'client_id': EVERNOTE_CONSUMER_KEY,
+            'client_secret': EVERNOTE_CONSUMER_SECRET,
+            'redirect_uri': EVERNOTE_REDIRECT_URI,
+            'code': code
+        }
+    )
+    
+    if token_response.status_code != 200:
+        return jsonify({'error': 'Failed to exchange code', 'details': token_response.text}), 400
+    
+    tokens = token_response.json()
+    
+    # Save or update token
+    existing = SocialToken.query.filter_by(user_id=user.id, platform='evernote').first()
+    
+    if existing:
+        existing.access_token = tokens['access_token']
+        # Evernote tokens often have very long lifetimes or are permanent in sandbox
+        existing.expires_at = datetime.utcnow() + timedelta(days=365) 
+    else:
+        social_token = SocialToken(
+            user_id=user.id,
+            platform='evernote',
+            access_token=tokens['access_token'],
+            expires_at=datetime.utcnow() + timedelta(days=365)
+        )
+        db.session.add(social_token)
+    
+    db.session.commit()
+    
+    return jsonify({
+        'message': 'Evernote connected successfully'
     })
 
 

@@ -1,5 +1,5 @@
 import { useEffect } from 'react';
-import { useFileStore, useSettingsStore, useGitHubStore, useTerminalStore } from '../store';
+import { useFileStore, useSettingsStore, useTerminalStore } from '../store';
 
 /**
  * SyncManager Component
@@ -21,7 +21,7 @@ const SyncManager = () => {
             } else if (e.key === 'roolts-settings-storage') {
                 useSettingsStore.persist?.rehydrate?.();
             } else if (e.key === 'roolts-github-storage') {
-                useGitHubStore.persist?.rehydrate?.();
+
             } else if (e.key === 'roolts-terminal-storage') {
                 useTerminalStore.persist?.rehydrate?.();
             }

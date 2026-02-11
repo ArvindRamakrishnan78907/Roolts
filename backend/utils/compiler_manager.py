@@ -7,7 +7,10 @@ import shutil
 from pathlib import Path
 
 # Configuration for portable runtimes
-RUNTIMES_DIR = Path("compiler")
+# Make sure RUNTIMES_DIR is absolute, relative to this file's location
+# Path of this file: .../backend/utils/compiler_manager.py
+# We want: .../backend/compiler
+RUNTIMES_DIR = (Path(__file__).parent.parent / "compiler").resolve()
 
 RUNTIME_CONFIG = {
     'c_cpp': {

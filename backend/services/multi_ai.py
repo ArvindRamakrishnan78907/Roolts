@@ -8,7 +8,13 @@ import re
 import json
 from abc import ABC, abstractmethod
 from typing import Optional, Dict, Any
+import asyncio
 import requests
+from huggingface_hub import InferenceClient
+
+from services.async_deepseek_provider import AsyncDeepSeekProvider
+from services.ai_explainer import AIExplainerService
+from services.code_champ import CodeChampService
 
 
 class AIProvider(ABC):
@@ -176,78 +182,7 @@ class ClaudeProvider(AIProvider):
             return {'error': str(e)}
 
 
-class DeepSeekProvider(AIProvider):
-    """DeepSeek AI Provider - Optimized for coding."""
-    
-    def __init__(self, api_key: str = None):
-        self.api_key = api_key or os.getenv('DEEPSEEK_API_KEY', '')
-        self.base_url = 'https://api.deepseek.com/v1'
-        self.model = 'deepseek-coder'
-    
-    def is_configured(self) -> bool:
-        return bool(self.api_key)
-    
-    def generate(self, prompt: str, system_prompt: str = None, messages: list = None) -> Dict[str, Any]:
-        if not self.is_configured():
-            return {'error': 'DeepSeek API key not configured'}
-        
-        headers = {
-            'Authorization': f'Bearer {self.api_key}',
-            'Content-Type': 'application/json'
-        }
-        
-        api_messages = []
-        
-        # System prompt
-        if system_prompt:
-            api_messages.append({'role': 'system', 'content': system_prompt})
-            
-        # User messages
-        if messages:
-            # If messages list has a system prompt at start, duplicate logic might occur if both provided
-            # We assume caller handles it, but generally we append.
-            for msg in messages:
-                 # Avoid double system prompt if one was passed as arg vs in list
-                 if msg['role'] == 'system' and system_prompt:
-                     continue
-                 api_messages.append(msg)
-        else:
-            api_messages.append({'role': 'user', 'content': prompt})
-        
-        data = {
-            'model': self.model,
-            'messages': api_messages,
-            'max_tokens': 4096
-        }
-        
-        # Debug: Log the API key being used (masked for security)
-        key_preview = f"{self.api_key[:8]}...{self.api_key[-4:]}" if len(self.api_key) > 12 else "TOO_SHORT"
-        print(f">>> DeepSeek API Call - Using key: {key_preview}")
-        
-        try:
-            response = requests.post(
-                f"{self.base_url}/chat/completions",
-                headers=headers,
-                json=data
-            )
-            result = response.json()
-            
-            # Debug: Log the response status
-            print(f">>> DeepSeek API Response Status: {response.status_code}")
-            if response.status_code != 200:
-                print(f">>> DeepSeek API Error Response: {result}")
-            
-            if 'choices' in result and result['choices']:
-                text = result['choices'][0]['message']['content']
-                return {
-                    'response': text,
-                    'model': 'deepseek',
-                    'provider': 'DeepSeek'
-                }
-            
-            return {'error': result.get('error', {}).get('message', 'Unknown error')}
-        except Exception as e:
-            return {'error': str(e)}
+
 
 
 class QwenProvider(AIProvider):
@@ -309,6 +244,83 @@ class QwenProvider(AIProvider):
             return {'error': str(e)}
 
 
+class HuggingFaceProvider(AIProvider):
+    """Hugging Face Inference AI Provider (DeepSeek-R1-Distill-Llama-8B)."""
+    
+    def __init__(self, api_key: str = None):
+        raw_key = api_key or os.getenv('HF_TOKEN', '')
+        self.api_key = raw_key.strip() if raw_key else ''
+        self.model = os.getenv('HF_MODEL_ID', 'deepseek-ai/DeepSeek-R1-Distill-Llama-8B')
+        self.client = None
+        if self.api_key:
+            try:
+                # Use the latest HF Router for better model support
+                self.client = InferenceClient(
+                    api_key=self.api_key,
+                    base_url="https://router.huggingface.co/v1"
+                )
+            except Exception as e:
+                print(f"HF Client Init Error: {e}")
+    
+    def is_configured(self) -> bool:
+        return bool(self.api_key)
+    
+    def generate(self, prompt: str, system_prompt: str = None, messages: list = None) -> Dict[str, Any]:
+        if not self.is_configured() or not self.client:
+            return {'error': 'Hugging Face (HF_TOKEN) not configured'}
+        
+        try:
+            # Construct messages for HF Chat Completion
+            hf_messages = []
+            if system_prompt:
+                hf_messages.append({"role": "system", "content": system_prompt})
+            
+            if messages:
+                for msg in messages:
+                    # Filter out system if already added
+                    if msg['role'] == 'system' and system_prompt: continue
+                    hf_messages.append({"role": msg['role'], "content": msg['content']})
+            else:
+                hf_messages.append({"role": "user", "content": prompt})
+
+            # Use non-streaming for stability
+            response_obj = self.client.chat_completion(
+                model=self.model,
+                messages=hf_messages,
+                max_tokens=2048,
+                stream=False,
+            )
+            
+            response_text = ""
+            if hasattr(response_obj, 'choices') and len(response_obj.choices) > 0:
+                choice = response_obj.choices[0]
+                # Try content first, then check if there's reasoning
+                msg = getattr(choice, 'message', None)
+                if msg:
+                    content = getattr(msg, 'content', '') or ''
+                    reasoning = getattr(msg, 'reasoning_content', '') or ''
+                    
+                    if reasoning and content:
+                        response_text = f"<think>\n{reasoning}\n</think>\n\n{content}"
+                    else:
+                        response_text = content or reasoning
+            
+            if not response_text:
+                print(f">>> HF Warning: Empty response received for model {self.model}")
+                # Try raw parsing if it's a dict
+                if isinstance(response_obj, dict):
+                     response_text = response_obj.get('choices', [{}])[0].get('message', {}).get('content', '')
+            
+            return {
+                'response': response_text,
+                'model': 'huggingface',
+                'provider': f'Hugging Face ({self.model})'
+            }
+        except Exception as e:
+            print(f">>> Hugging Face API Error: {str(e)}")
+            return {'error': str(e)}
+
+
 class AISelector:
     """
     Intelligent AI Model Selection Algorithm
@@ -356,15 +368,16 @@ class AISelector:
         r'[\u0900-\u097f]'
     ]
     
+    REASONING_KEYWORDS = [
+        'reason', 'think', 'solve', 'complex', 'logic', 'thought', 'step-by-step',
+        'why', 'how to', 'deep', 'analysis', 'math', 'proof', 'explain carefully'
+    ]
+    
     def __init__(self, available_models: list = None):
         """
         Initialize with available models.
-        
-        Args:
-            available_models: List of model names that are configured.
-                            If None, assumes all are available.
         """
-        self.available = available_models or ['gemini', 'claude', 'deepseek', 'qwen']
+        self.available = available_models or ['gemini', 'claude', 'deepseek', 'qwen', 'huggingface']
     
     def _count_keyword_matches(self, text: str, keywords: list) -> int:
         """Count how many keywords appear in the text."""
@@ -382,6 +395,7 @@ class AISelector:
         """Calculate suitability scores for each model."""
         scores = {
             'deepseek': 0.0,
+            'huggingface': 0.0,
             'claude': 0.0,
             'gemini': 0.0,
             'qwen': 0.0
@@ -390,19 +404,26 @@ class AISelector:
         prompt_lower = prompt.lower()
         prompt_length = len(prompt)
         
-        # === DeepSeek: Coding tasks ===
+        # === HuggingFace / DeepSeek-R1: Advanced Reasoning & Logic ===
+        reasoning_matches = self._count_keyword_matches(prompt, self.REASONING_KEYWORDS)
+        if reasoning_matches > 0:
+            scores['huggingface'] += reasoning_matches * 3.0
+            
+        # Coding boost for HF as well (DeepSeek-R1 is excellent at code)
         code_matches = self._count_keyword_matches(prompt, self.CODE_KEYWORDS)
         if code_matches > 0:
+            scores['huggingface'] += code_matches * 1.5
             scores['deepseek'] += code_matches * 2.0
         
         # Check for code blocks
         if '```' in prompt or 'def ' in prompt or 'function ' in prompt:
+            scores['huggingface'] += 4.0
             scores['deepseek'] += 5.0
         
         # === Claude: Writing and nuanced analysis ===
         writing_matches = self._count_keyword_matches(prompt, self.WRITING_KEYWORDS)
         if writing_matches > 0:
-            scores['claude'] += writing_matches * 2.0
+            scores['claude'] += writing_matches * 2.5
         
         # Long-form content preference
         if prompt_length > 500:
@@ -416,14 +437,17 @@ class AISelector:
         # Question patterns
         if prompt_lower.startswith(('what', 'how', 'why', 'when', 'where', 'who')):
             scores['gemini'] += 2.0
+            scores['huggingface'] += 1.0 # DeepSeek-R1 also good for 'why'
         
         # === Qwen: Multilingual content ===
         if self._has_non_latin(prompt):
             scores['qwen'] += 10.0  # Strong preference for non-Latin text
         
         # Base scores (so no model gets 0)
+        # We give a slight edge to HF-R1 as the most modern default
         for model in scores:
-            scores[model] += 1.0
+            scores[model] += 0.5
+        scores['huggingface'] += 1.0 
         
         # Filter to only available models
         return {k: v for k, v in scores.items() if k in self.available}
@@ -479,40 +503,43 @@ class MultiAIService:
     """
     Unified service for interacting with multiple AI providers.
     Supports automatic model selection or manual override.
+    Asynchronous implementation.
     """
     
     def __init__(self, user_api_keys: Dict[str, str] = None):
         """
         Initialize the Multi-AI service.
-        
-        Args:
-            user_api_keys: Optional dict of user-specific API keys
-                          {'gemini': 'key', 'claude': 'key', ...}
         """
         user_api_keys = user_api_keys or {}
         
-        # Debug: Log what keys are being passed
-        print(f">>> MultiAIService init - Received keys: {list(user_api_keys.keys())}")
-        for provider, key in user_api_keys.items():
-            if key:
-                preview = f"{key[:8]}...{key[-4:]}" if len(key) > 12 else "SHORT"
-                print(f">>> {provider}: {preview}")
-            else:
-                print(f">>> {provider}: None/Empty")
+        # Initialize Sync Providers
+        self.gemini = GeminiProvider(user_api_keys.get('gemini'))
+        self.claude = ClaudeProvider(user_api_keys.get('claude'))
+        self.qwen = QwenProvider(user_api_keys.get('qwen'))
+        self.huggingface = HuggingFaceProvider(user_api_keys.get('huggingface') or user_api_keys.get('hf_token'))
         
+        # Initialize Async Providers
+        self.async_deepseek = AsyncDeepSeekProvider(user_api_keys.get('deepseek'))
+        
+        # Map for selection. deeplyseek is async, others are sync.
         self.providers = {
-            'gemini': GeminiProvider(user_api_keys.get('gemini')),
-            'claude': ClaudeProvider(user_api_keys.get('claude')),
-            'deepseek': DeepSeekProvider(user_api_keys.get('deepseek')),
-            'qwen': QwenProvider(user_api_keys.get('qwen'))
+            'gemini': self.gemini,
+            'claude': self.claude,
+            'deepseek': self.async_deepseek,
+            'qwen': self.qwen,
+            'huggingface': self.huggingface
         }
         
-        # Determine which models are available
-        available = [name for name, provider in self.providers.items() 
-                    if provider.is_configured()]
+        # Specialized Services
+        # Pass a callback that uses the main chat method, enabling fallback logic
+        async def explainer_callback(prompt, system_prompt):
+            return await self.chat(prompt, model='deepseek', system_prompt=system_prompt)
+            
+        self.explainer = AIExplainerService(explainer_callback)
+        self.code_champ = CodeChampService(self.async_deepseek)
         
-        print(f">>> MultiAIService - Available models: {available}")
-        
+        # AI Selector
+        available = self.get_available_models()
         self.selector = AISelector(available)
     
     def get_available_models(self) -> list:
@@ -520,25 +547,14 @@ class MultiAIService:
         return [name for name, provider in self.providers.items() 
                 if provider.is_configured()]
     
-    def chat(
+    async def chat(
         self, 
         prompt: str, 
         model: str = 'auto',
         system_prompt: str = None,
         messages: list = None
     ) -> Dict[str, Any]:
-        """
-        Send a prompt to an AI model.
-        
-        Args:
-            prompt: The user's prompt (used if messages is None)
-            model: Model to use ('auto', 'gemini', 'claude', 'deepseek', 'qwen')
-            system_prompt: Optional system instructions
-            messages: List of conversation messages
-            
-        Returns:
-            Dict with response, model used, and any errors
-        """
+        """Send a message to an AI model asynchronously."""
         if not prompt and (not messages or len(messages) == 0):
             return {'error': 'Prompt or messages required'}
         
@@ -558,45 +574,90 @@ class MultiAIService:
         provider = self.providers[model]
         
         if not provider.is_configured():
-            # Fallback to any available model
-            available = self.get_available_models()
-            if not available:
-                return {'error': 'No AI models configured. Please add API keys.'}
+            if auto_selected:
+                available = self.get_available_models()
+                if not available:
+                    return {'error': 'No AI models configured. Please add API keys.'}
+                model = available[0]
+                provider = self.providers[model]
+            else:
+                return {'error': f'Model {model} is not configured (missing API key)'}
+        
+        # Execution
+        try:
+            if model == 'deepseek':
+                # Async path
+                result = await provider.generate_async(prompt, system_prompt, messages)
+            else:
+                # Sync path -> Run in executor
+                loop = asyncio.get_running_loop()
+                result = await loop.run_in_executor(
+                    None, 
+                    lambda: provider.generate(prompt, system_prompt, messages)
+                )
             
-            model = available[0]
-            provider = self.providers[model]
-        
-        # Generate response
-        result = provider.generate(prompt, system_prompt, messages)
-        
-        # Add metadata
-        if 'error' not in result:
-            result['auto_selected'] = auto_selected
-            if selection:
-                result['selection_reason'] = selection['reason']
-                result['all_scores'] = selection['scores']
-        
-        return result
-    
-    def suggest(self, partial_text: str) -> Dict[str, Any]:
-        """
-        Get AI suggestions while user is typing.
-        
-        Args:
-            partial_text: The text user has typed so far
+            # Fallback Logic
+            if 'error' in result:
+                error_msg = str(result['error'])
+                print(f">>> Primary Model ({model}) failed: {error_msg}")
+                
+                # Check for recoverable errors (Balance, Rate Limit, Server Error, Auth)
+                # Basically try fallback for almost anything except maybe invalid prompt
+                should_fallback = any(x in error_msg for x in [
+                    'Insufficient Balance', '402', '429', '500', '503', 'Overloaded',
+                    'Connection error', 'rate limit'
+                ])
+                
+                # Also fallback if we just have a generic "error" and a fallback is available
+                if should_fallback:
+                    available = self.get_available_models()
+                    remaining = [m for m in available if m != model]
+                    fallback_model = 'huggingface' if 'huggingface' in remaining else (remaining[0] if remaining else None)
+                    
+                    if fallback_model:
+                        print(f">>> Attempting fallback to {fallback_model}...")
+                        fallback_provider = self.providers[fallback_model]
+                        if fallback_model == 'deepseek':
+                             result = await fallback_provider.generate_async(prompt, system_prompt, messages)
+                        else:
+                            loop = asyncio.get_running_loop()
+                            result = await loop.run_in_executor(
+                                None, 
+                                lambda: fallback_provider.generate(prompt, system_prompt, messages)
+                            )
+                            
+                        if 'error' not in result:
+                            result['fallback_used'] = True
+                            result['original_model'] = model
+                            result['model'] = fallback_model
+                            result['warning'] = f"Original model {model} failed: {error_msg}"
+
+            # Metadata
+            if 'error' not in result:
+                if 'response' in result and 'content' not in result:
+                    result['content'] = result['response']
+                result['auto_selected'] = auto_selected
+                if selection:
+                    result['selection_reason'] = selection['reason']
+                    result['all_scores'] = selection['scores']
             
-        Returns:
-            Suggestions for completing the text
-        """
+            return result
+
+        except Exception as e:
+            return {'error': str(e)}
+
+    async def suggest(self, partial_text: str) -> Dict[str, Any]:
+        """Get AI suggestions while user is typing."""
         if len(partial_text) < 10:
             return {'suggestions': []}
         
-        # Use the fastest available model for suggestions
         available = self.get_available_models()
         if not available:
             return {'suggestions': [], 'error': 'No AI models configured'}
         
-        # Prefer Gemini for speed, then others
+        # DeepSeek is good for code completion, Gemini for speed
+        # If deepseek is available, use it via code_champ logic or direct?
+        # Let's prefer Gemini for speed if available, otherwise DeepSeek
         model = 'gemini' if 'gemini' in available else available[0]
         provider = self.providers[model]
         
@@ -605,36 +666,39 @@ class MultiAIService:
             "Based on the partial text, provide 3 brief completions or improvements. "
             "Return only a JSON array of 3 strings, no explanation."
         )
-        
         prompt = f"Suggest completions for: \"{partial_text}\""
         
-        result = provider.generate(prompt, system_prompt)
-        
-        if 'error' in result:
-            return {'suggestions': [], 'error': result['error']}
-        
-        # Parse suggestions from response
         try:
+            if model == 'deepseek':
+                result = await provider.generate_async(prompt, system_prompt)
+            else:
+                loop = asyncio.get_running_loop()
+                result = await loop.run_in_executor(
+                    None, 
+                    lambda: provider.generate(prompt, system_prompt)
+                )
+            
+            if 'error' in result:
+                return {'suggestions': [], 'error': result['error']}
+            
+            # Parse logic (same as before)
             text = result['response']
-            # Try to extract JSON array
-            match = re.search(r'\[.*?\]', text, re.DOTALL)
-            if match:
-                json_str = match.group()
-                suggestions = json.loads(json_str)
-                # Ensure it's a list of strings
-                if isinstance(suggestions, list) and all(isinstance(s, str) for s in suggestions):
-                    pass
+            try:
+                match = re.search(r'\[.*?\]', text, re.DOTALL)
+                if match:
+                    json_str = match.group()
+                    suggestions = json.loads(json_str)
+                    if not (isinstance(suggestions, list) and all(isinstance(s, str) for s in suggestions)):
+                         suggestions = [text.strip()]
                 else:
                     suggestions = [text.strip()]
-            else:
-                suggestions = [text.strip()]
-        except json.JSONDecodeError:
-            suggestions = [result['response'].strip()]
+            except json.JSONDecodeError:
+                suggestions = [result['response'].strip()]
+                
+            return {
+                'suggestions': suggestions[:3],
+                'model': model
+            }
+            
         except Exception as e:
-            # Fallback for other errors
-            suggestions = [result['response'].strip()]
-        
-        return {
-            'suggestions': suggestions[:3],
-            'model': model
-        }
+            return {'suggestions': [], 'error': str(e)}

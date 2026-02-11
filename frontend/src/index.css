@@ -3,8 +3,13 @@
    Design System & Global Styles
    ============================================ */
 
+@import url('https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;600;700&family=Sora:wght@400;500;600;700&display=swap');
+
 /* CSS Variables */
 :root {
+  --font-heading: 'Outfit', sans-serif;
+  --font-body: 'Sora', sans-serif;
+
   /* Colors - Dark Theme */
   --bg-primary: #0d1117;
   --bg-secondary: #161b22;
@@ -57,7 +62,17 @@
   --space-6: 24px;
   --space-8: 32px;
   --space-10: 40px;
+
+  /* Background Settings */
+  /* Marketplace Specifics */
+  --marketplace-card-bg: rgba(30, 41, 59, 0.4);
+  --marketplace-card-hover: rgba(51, 65, 85, 0.6);
+  --marketplace-hero-bg: linear-gradient(135deg, rgba(99, 102, 241, 0.1) 0%, rgba(139, 92, 246, 0.05) 100%);
+  --badge-new: #10b981;
+  --badge-trending: #f59e0b;
+  --glass-blur: blur(12px);
 }
+
 
 /* Light Theme */
 .theme-light {
@@ -167,11 +182,58 @@ html {
 }
 
 body {
-  font-family: var(--font-sans);
+  font-family: var(--font-body);
   background: var(--bg-primary);
   color: var(--text-primary);
   line-height: 1.6;
   overflow: hidden;
+}
+
+
+/* ============================================
+   Glassmorphism / Background Image Support
+   ============================================ */
+.has-bg-image {
+  background-attachment: fixed !important;
+  background-size: cover !important;
+  background-position: center !important;
+}
+
+.has-bg-image .header,
+.has-bg-image .sidebar,
+.has-bg-image .right-panel,
+.has-bg-image .editor-tabs,
+.has-bg-image .output-panel,
+.has-bg-image .editor-minimized-bar,
+.has-bg-image .panel-tabs {
+  background-color: color-mix(in srgb, var(--bg-secondary), transparent calc(100% - (var(--bg-opacity) * 100%))) !important;
+  backdrop-filter: blur(12px) saturate(180%);
+  -webkit-backdrop-filter: blur(12px) saturate(180%);
+}
+
+.has-bg-image .main,
+.has-bg-image .editor-container,
+.has-bg-image .monaco-wrapper,
+.has-bg-image .panel-content,
+.has-bg-image .file-explorer,
+.has-bg-image .welcome {
+  background-color: color-mix(in srgb, var(--bg-primary), transparent calc(100% - (var(--bg-opacity) * 100%))) !important;
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+}
+
+.has-bg-image .monaco-editor,
+.has-bg-image .monaco-editor .margin,
+.has-bg-image .monaco-editor-background {
+  background-color: transparent !important;
+}
+
+.has-bg-image .file-item:hover,
+.has-bg-image .file-item--active,
+.has-bg-image .editor-tab:hover,
+.has-bg-image .editor-tab--active {
+  background-color: var(--bg-tertiary) !important;
+  opacity: 1;
 }
 
 /* Scrollbar Styling */
@@ -746,6 +808,152 @@ body {
   margin-bottom: var(--space-4);
   overflow: hidden;
 }
+
+/* ============================================
+   Marketplace (VSCodeApp) Enhancements
+   ============================================ */
+.marketplace-container {
+  display: flex;
+  height: 100%;
+  background: var(--bg-primary);
+}
+
+.marketplace-hero {
+  position: relative;
+  height: 280px;
+  border-radius: var(--radius-lg);
+  margin-bottom: var(--space-8);
+  overflow: hidden;
+  background: linear-gradient(135deg, #1e293b 0%, #0f172a 100%);
+  display: flex;
+  align-items: center;
+  padding: var(--space-10);
+  border: 1px solid rgba(255, 255, 255, 0.05);
+}
+
+.marketplace-hero__content {
+  flex: 1;
+  z-index: 10;
+}
+
+.marketplace-hero__title {
+  font-family: var(--font-heading);
+  font-size: 32px;
+  font-weight: 700;
+  margin-bottom: var(--space-2);
+  background: linear-gradient(135deg, #fff 0%, #94a3b8 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+
+.marketplace-hero__subtitle {
+  font-size: 16px;
+  color: var(--text-secondary);
+  max-width: 500px;
+}
+
+.marketplace-hero__badge {
+  display: inline-block;
+  padding: 4px 12px;
+  background: var(--accent-gradient);
+  border-radius: 20px;
+  font-size: 12px;
+  font-weight: 600;
+  color: white;
+  margin-bottom: var(--space-4);
+}
+
+.marketplace-card {
+  background: rgba(30, 41, 59, 0.4) !important;
+  backdrop-filter: blur(10px);
+  border: 1px solid rgba(255, 255, 255, 0.05) !important;
+  transition: all var(--transition-normal) !important;
+  position: relative;
+  overflow: hidden;
+}
+
+.marketplace-card:hover {
+  transform: translateY(-8px) scale(1.02);
+  border-color: var(--accent-primary) !important;
+  box-shadow: 0 10px 40px rgba(0, 0, 0, 0.4), 0 0 20px rgba(99, 102, 241, 0.15);
+  background: rgba(30, 41, 59, 0.6) !important;
+}
+
+.marketplace-card__title {
+  font-family: var(--font-heading) !important;
+  font-weight: 600 !important;
+}
+
+.marketplace-badge {
+  font-size: 10px;
+  padding: 2px 8px;
+  border-radius: 4px;
+  font-weight: 600;
+  text-transform: uppercase;
+}
+
+.marketplace-badge--new {
+  background: var(--success);
+  color: white;
+}
+
+.marketplace-badge--trending {
+  background: var(--warning);
+  color: black;
+}
+
+.marketplace-badge--verified {
+  background: var(--info);
+  color: white;
+}
+
+/* Animations */
+@keyframes fadeInUp {
+  from {
+    opacity: 0;
+    transform: translateY(20px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.animate-fade-in-up {
+  animation: fadeInUp 0.5s ease forwards;
+}
+
+.staggered-list>* {
+  opacity: 0;
+}
+
+.staggered-list>*:nth-child(1) {
+  animation: fadeInUp 0.5s ease forwards 0.1s;
+}
+
+.staggered-list>*:nth-child(2) {
+  animation: fadeInUp 0.5s ease forwards 0.2s;
+}
+
+.staggered-list>*:nth-child(3) {
+  animation: fadeInUp 0.5s ease forwards 0.3s;
+}
+
+.staggered-list>*:nth-child(4) {
+  animation: fadeInUp 0.5s ease forwards 0.4s;
+}
+
+.staggered-list>*:nth-child(5) {
+  animation: fadeInUp 0.5s ease forwards 0.5s;
+}
+
+.staggered-list>*:nth-child(6) {
+  animation: fadeInUp 0.5s ease forwards 0.6s;
+}
+
 
 .learning-card__header {
   display: flex;
@@ -1830,4 +2038,274 @@ body {
   background-color: rgba(255, 0, 255, 0.35) !important;
   border-bottom: 2px solid rgba(255, 0, 255, 0.8) !important;
   z-index: 20;
+}
+
+/* ============================================
+   MARKETPLACE UI
+   ============================================ */
+
+.marketplace-container {
+  display: flex;
+  height: 100%;
+  background: var(--bg-primary);
+  color: var(--text-primary);
+  font-family: var(--font-body);
+}
+
+.marketplace-hero {
+  position: relative;
+  padding: 48px;
+  border-radius: var(--radius-lg);
+  background: var(--marketplace-hero-bg);
+  border: 1px solid rgba(255, 255, 255, 0.05);
+  margin-bottom: 40px;
+  overflow: hidden;
+  display: flex;
+  align-items: center;
+  transition: transform 0.3s ease;
+}
+
+.marketplace-hero:hover {
+  transform: translateY(-2px);
+}
+
+.marketplace-hero__content {
+  position: relative;
+  z-index: 2;
+  max-width: 600px;
+}
+
+.marketplace-hero__badge {
+  display: inline-block;
+  padding: 4px 12px;
+  background: rgba(99, 102, 241, 0.2);
+  color: #818cf8;
+  border-radius: 20px;
+  font-size: 12px;
+  font-weight: 600;
+  margin-bottom: 16px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.marketplace-hero__title {
+  font-family: var(--font-heading);
+  font-size: 36px;
+  font-weight: 800;
+  margin-bottom: 12px;
+  background: linear-gradient(to right, #fff, #94a3b8);
+  background-clip: text;
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+
+.marketplace-hero__subtitle {
+  font-size: 16px;
+  color: var(--text-secondary);
+  line-height: 1.6;
+}
+
+.marketplace-card {
+  background: var(--marketplace-card-bg);
+  backdrop-filter: var(--glass-blur);
+  border: 1px solid rgba(255, 255, 255, 0.05);
+  border-radius: var(--radius-md);
+  padding: 24px;
+  display: flex;
+  flex-direction: column;
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  position: relative;
+}
+
+.marketplace-card:hover {
+  background: var(--marketplace-card-hover);
+  border-color: rgba(99, 102, 241, 0.3);
+  transform: translateY(-4px) scale(1.01);
+  box-shadow: 0 20px 40px rgba(0, 0, 0, 0.3), 0 0 20px rgba(99, 102, 241, 0.1);
+}
+
+.marketplace-card--installed {
+  border-left: 3px solid var(--accent-primary);
+}
+
+.marketplace-icon-box {
+  width: 52px;
+  height: 52px;
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.03);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  border: 1px solid rgba(255, 255, 255, 0.05);
+}
+
+.marketplace-badge {
+  padding: 2px 8px;
+  border-radius: 4px;
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+}
+
+.marketplace-badge--verified {
+  background: rgba(16, 185, 129, 0.1);
+  color: #10b981;
+}
+
+@keyframes spin {
+  from {
+    transform: rotate(0deg);
+  }
+
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+  }
+
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes fadeInUp {
+  from {
+    opacity: 0;
+    transform: translateY(20px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.animate-fade-in {
+  animation: fadeIn 0.4s ease-out forwards;
+}
+
+.animate-fade-in-up {
+  animation: fadeInUp 0.5s ease-out forwards;
+}
+
+.staggered-list>div {
+  opacity: 0;
+  animation: fadeInUp 0.5s ease-out forwards;
+}
+
+.staggered-list>div:nth-child(1) {
+  animation-delay: 0.1s;
+}
+
+.staggered-list>div:nth-child(2) {
+  animation-delay: 0.15s;
+}
+
+.staggered-list>div:nth-child(3) {
+  animation-delay: 0.2s;
+}
+
+.staggered-list>div:nth-child(4) {
+  animation-delay: 0.25s;
+}
+
+.staggered-list>div:nth-child(5) {
+  animation-delay: 0.3s;
+}
+
+.staggered-list>div:nth-child(6) {
+  animation-delay: 0.35s;
+}
+
+/* Floating Alerts */
+.floating-alert {
+  position: absolute;
+  top: 16px;
+  right: 16px;
+  z-index: 1000;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 16px;
+  background: color-mix(in srgb, var(--bg-secondary), transparent 20%);
+  backdrop-filter: var(--glass-blur);
+  -webkit-backdrop-filter: var(--glass-blur);
+  border: 1px solid color-mix(in srgb, var(--warning), transparent 50%);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-lg), 0 0 15px color-mix(in srgb, var(--warning), transparent 80%);
+  animation: slideInRight 0.4s cubic-bezier(0.16, 1, 0.3, 1);
+  color: var(--text-primary);
+}
+
+.java-mismatch-alert {
+  border-left: 4px solid var(--warning) !important;
+}
+
+.floating-alert__icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  background: color-mix(in srgb, var(--warning), transparent 85%);
+  color: var(--warning);
+  border-radius: 50%;
+  font-size: 18px;
+  flex-shrink: 0;
+}
+
+.floating-alert__content {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.floating-alert__title {
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.floating-alert__message {
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+
+.floating-alert__actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-left: 8px;
+}
+
+.btn--fix {
+  background: var(--accent-gradient);
+  color: white;
+  padding: 6px 14px;
+  height: auto;
+  font-size: 12px;
+  font-weight: 600;
+  border-radius: var(--radius-md);
+  box-shadow: 0 4px 12px color-mix(in srgb, var(--accent-primary), transparent 70%);
+}
+
+.btn--fix:hover {
+  transform: translateY(-1px) !important;
+  box-shadow: 0 6px 16px color-mix(in srgb, var(--accent-primary), transparent 50%) !important;
+}
+
+@keyframes slideInRight {
+  from {
+    transform: translateX(30px);
+    opacity: 0;
+  }
+
+  to {
+    transform: translateX(0);
+    opacity: 1;
+  }
 }

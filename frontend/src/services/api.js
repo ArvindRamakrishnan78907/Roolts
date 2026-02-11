@@ -13,21 +13,7 @@ const api = axios.create({
     }
 });
 
-// Request interceptor for adding auth tokens
-api.interceptors.request.use((config) => {
-    const githubToken = localStorage.getItem('github_token');
-    const linkedinToken = localStorage.getItem('linkedin_token');
 
-    if (githubToken && config.url?.includes('/github')) {
-        config.headers['X-GitHub-Token'] = githubToken;
-    }
-
-    if (linkedinToken && config.url?.includes('/linkedin')) {
-        config.headers['X-LinkedIn-Token'] = linkedinToken;
-    }
-
-    return config;
-});
 
 // Response interceptor for error handling
 api.interceptors.response.use(
@@ -49,43 +35,6 @@ export const fileService = {
     save: (id) => api.post(`/files/${id}/save`)
 };
 
-// ============ GitHub Operations ============
-
-export const githubService = {
-    getAuthUrl: () => api.get('/github/auth'),
-    handleCallback: (code) => api.post('/github/callback', { code }),
-    getUser: () => api.get('/github/user'),
-    listRepos: (page = 1, perPage = 30) =>
-        api.get('/github/repos', { params: { page, per_page: perPage } }),
-    createRepo: (data) => api.post('/github/repos', data),
-    push: (owner, repo, data) => api.post(`/github/repos/${owner}/${repo}/push`, data),
-    clone: (owner, repo, branch = 'main') =>
-        api.post(`/github/repos/${owner}/${repo}/clone`, {}, { params: { branch } }),
-    isAuthenticated: () => !!localStorage.getItem('github_token'),
-    clearToken: () => localStorage.removeItem('github_token'),
-    setToken: (token) => localStorage.setItem('github_token', token),
-    getCurrentUser: () => api.get('/github/user')
-};
-
-// ============ Social Media Operations ============
-
-export const socialService = {
-    // LinkedIn
-    getLinkedInAuthUrl: () => api.get('/social/linkedin/auth'),
-    linkedinCallback: (code, redirectUri) =>
-        api.post('/social/linkedin/callback', { code, redirect_uri: redirectUri }),
-    postToLinkedIn: (content) => api.post('/social/linkedin/post', { content }),
-
-    // Twitter
-    getTwitterAuthUrl: () => api.get('/social/twitter/auth'),
-    postToTwitter: (content) => api.post('/social/twitter/post', { content }),
-    getTwitterUser: () => api.get('/social/twitter/user'),
-
-    // Helper
-    generateSummary: (code, projectName, platform) =>
-        api.post('/social/generate-summary', { code, project_name: projectName, platform })
-};
-
 // ============ AI Learning Operations ============
 
 export const aiService = {
@@ -94,6 +43,8 @@ export const aiService = {
         api.post('/ai/diagram', { code, language, type }),
     suggestResources: (code, language) => api.post('/ai/resources', { code, language }),
     analyzeCode: (code, language) => api.post('/ai/analyze', { code, language }),
+    analyzeCodeChamp: (code, language, action = 'analyze', url = '', target = '') =>
+        api.post('/ai/code-champ', { code, language, action, url, target }),
     chat: (code, language, query, history) =>
         api.post('/ai/chat', { code, language, query, history }),
     suggestCommitMessage: (files, diff) =>

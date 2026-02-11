@@ -58,7 +58,7 @@ export const executorService = {
     /**
      * Execute Java code
      */
-    executeJava: async (code, className = 'Main') => {
+    executeJava: async (code, className = 'Main', input = '') => {
         // If className ends with .java, use it as filename, else assume it's class name
         const filename = className.endsWith('.java') ? className : `${className}.java`;
         const response = await executorApi.post('/execute', { code, language: 'java', filename, input });

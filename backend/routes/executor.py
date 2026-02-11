@@ -12,7 +12,8 @@ import shutil
 import sys
 import re
 from flask import Blueprint, jsonify, request
-
+import traceback
+from pathlib import Path
 from utils.compiler_manager import get_gcc_path, get_gplusplus_path, get_executable_path, get_runtime_root
 
 executor_bp = Blueprint('executor', __name__)
@@ -20,7 +21,21 @@ executor_bp = Blueprint('executor', __name__)
 @executor_bp.route('/execute', methods=['POST'])
 def execute_code():
     """Execute code in the specified language"""
-    data = request.get_json()
+    try:
+        data = request.get_json(silent=True)
+    except Exception as e:
+        return jsonify({'success': False, 'error': f'Invalid JSON: {str(e)}'}), 400
+    
+    if data is None:
+        return jsonify({'success': False, 'error': 'No data provided in request body'}), 400
+
+    if not isinstance(data, dict):
+
+        return jsonify({
+            'success': False, 
+            'error': 'Invalid request format. Expected a JSON object.'
+        }), 400
+
     code = data.get('code', '')
     language = data.get('language', 'python')
     filename = data.get('filename', '')
@@ -235,42 +250,32 @@ def execute_code():
                 # Add bin to path just in case
                 go_env['PATH'] = os.path.join(go_root, 'bin') + os.pathsep + go_env.get('PATH', '')
             
-            # Use stable paths in the compiler directory for GOPATH and GOCACHE to ensure persistence
-            compiler_dir = Path(go_root).parent
-            go_env['GOPATH'] = str((compiler_dir / "gopath").absolute())
-            go_env['GOCACHE'] = str((compiler_dir / "gocache").absolute())
-            go_env['GOTOOLCHAIN'] = 'local'
+                # Use stable paths in the compiler directory for GOPATH and GOCACHE to ensure persistence
+                compiler_dir = Path(go_root).parent
+                go_env['GOPATH'] = str((compiler_dir / "gopath").absolute())
+                go_env['GOCACHE'] = str((compiler_dir / "gocache").absolute())
+                go_env['GOTOOLCHAIN'] = 'local'
             
-            # Use 'go build' to follow the pattern
-            compile_cmd = [go_exe, 'build', '-o', exe_path, fname]
-            
-            compile_result = subprocess.run(
-                compile_cmd,
+            # Use 'go run' for faster performance on script-like execution
+            # Ensure GOPATH and GOCACHE dirs exist to prevent startup delays/errors
+            if go_root:
+                gopath = go_env.get('GOPATH')
+                gocache = go_env.get('GOCACHE')
+                if gopath: os.makedirs(gopath, exist_ok=True)
+                if gocache: os.makedirs(gocache, exist_ok=True)
+
+            run_result = subprocess.run(
+                [go_exe, 'run', fname],
                 cwd=temp_dir,
                 capture_output=True,
                 text=True,
+                input=stdin_input,
                 env=go_env,
                 timeout=60
             )
-            
-            if compile_result.returncode != 0:
-                output = compile_result.stdout
-                error = "Go Build Error:\n" + compile_result.stderr
-                success = False
-            else:
-                # Run Go Executable
-                run_result = subprocess.run(
-                    [exe_path],
-                    cwd=temp_dir,
-                    capture_output=True,
-                    text=True,
-                    input=stdin_input,
-                    env=go_env,
-                    timeout=60
-                )
-                output = run_result.stdout
-                error = run_result.stderr
-                success = run_result.returncode == 0
+            output = run_result.stdout
+            error = run_result.stderr
+            success = run_result.returncode == 0
 
         else:
             return jsonify({'success': False, 'error': f'Unsupported language: {language}'}), 400
@@ -293,19 +298,31 @@ def execute_code():
             'success': False,
             'error': 'Execution timed out (60s limit)'
         }), 408
+    except PermissionError as e:
+        # Handling common permission issues (e.g., file in use)
+        return jsonify({
+            'success': False,
+            'error': f'Permission denied: {str(e)}. The executable might be blocked or already running.'
+        }), 403
     except Exception as e:
+        # Log the full error to console for the developer
+        print(f"[ERROR] Exception in execute_code ({language}): {str(e)}")
+        traceback.print_exc()
+        
         # Check if it's a "file not found" error that wasn't caught by FileNotFoundError
-        # (sometimes happens with shell=True or complex subprocess calls)
         msg = str(e)
         if "The system cannot find the file specified" in msg:
              return jsonify({
                 'success': False,
-                'error': 'System could not find the required executable (python, node, javac, etc). Please ensure the language runtime is installed.'
+                'error': f'System could not find the required executable for {language}. Please ensure portable runtimes are set up correctly.'
             }), 400
             
+        error_details = traceback.format_exc() if os.environ.get('FLASK_DEBUG') == '1' else None
+        
         return jsonify({
             'success': False,
-            'error': str(e)
+            'error': f"Internal Server Error: {str(e)}",
+            'details': error_details
         }), 500
     finally:
         # Cleanup temporary directory

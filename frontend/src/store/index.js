@@ -229,75 +229,7 @@ export default App;
     )
 );
 
-// GitHub Store - manages GitHub integration state (persisted)
-export const useGitHubStore = create(
-    persist(
-        (set) => ({
-            isConnected: false,
-            user: null,
-            repositories: [],
-            selectedRepo: null,
-            isLoading: false,
-            error: null,
 
-            setConnected: (isConnected, user = null) => set({ isConnected, user }),
-            setRepositories: (repositories) => set({ repositories }),
-            selectRepo: (repo) => set({ selectedRepo: repo }),
-            setLoading: (isLoading) => set({ isLoading }),
-            setError: (error) => set({ error }),
-
-            reset: () => set({
-                isConnected: false,
-                user: null,
-                repositories: [],
-                selectedRepo: null,
-                isLoading: false,
-                error: null
-            })
-        }),
-        {
-            name: 'roolts-github-storage',
-            partialize: (state) => ({
-                isConnected: state.isConnected,
-                user: state.user,
-                repositories: state.repositories
-            })
-        }
-    )
-);
-
-// Social Store - manages social media integration
-export const useSocialStore = create((set) => ({
-    linkedin: {
-        isConnected: false,
-        user: null
-    },
-    twitter: {
-        isConnected: false,
-        user: null
-    },
-    isPosting: false,
-    lastPost: null,
-
-    connectLinkedIn: (user) => set((state) => ({
-        linkedin: { isConnected: true, user }
-    })),
-
-    connectTwitter: (user) => set((state) => ({
-        twitter: { isConnected: true, user }
-    })),
-
-    disconnectLinkedIn: () => set((state) => ({
-        linkedin: { isConnected: false, user: null }
-    })),
-
-    disconnectTwitter: () => set((state) => ({
-        twitter: { isConnected: false, user: null }
-    })),
-
-    setPosting: (isPosting) => set({ isPosting }),
-    setLastPost: (lastPost) => set({ lastPost })
-}));
 
 // Learning Store - manages AI learning features
 export const useLearningStore = create((set) => ({
@@ -336,7 +268,7 @@ export const useLearningStore = create((set) => ({
 export const useUIStore = create((set) => ({
     sidebarOpen: true,
     rightPanelOpen: true,
-    rightPanelTab: 'github',
+    rightPanelTab: 'learn',
     editorMinimized: false,
     rightPanelExpanded: false,
     modals: {
@@ -408,7 +340,10 @@ export const useSettingsStore = create(
                 vimMode: false
             },
             experimental: {
-                scribble: false
+                scribble: false,
+                customBackground: false,
+                customBackground: false,
+                vscodeApp: true
             },
             scribblePenSize: 3,
             scribbleEraserSize: 15,
@@ -452,7 +387,10 @@ export const useSettingsStore = create(
                     vimMode: false
                 },
                 experimental: {
-                    scribble: false
+                    scribble: false,
+                    customBackground: false,
+                    customBackground: false,
+                    vscodeApp: true
                 },
                 scribblePenSize: 3,
                 scribbleEraserSize: 15
@@ -465,106 +403,133 @@ export const useSettingsStore = create(
 );
 
 // Notes Store - manages notes for the note editor
-export const useNotesStore = create((set, get) => ({
-    notes: [],
-    activeNoteId: null,
-    isLoading: false,
-    searchQuery: '',
+export const useNotesStore = create(
+    persist(
+        (set, get) => ({
+            notes: [],
+            activeNoteId: null,
+            isLoading: false,
+            searchQuery: '',
+            selectedProvider: null, // 'roolts', 'onedrive', 'evernote'
 
-    setNotes: (notes) => set({ notes }),
-    setActiveNote: (noteId) => set({ activeNoteId: noteId }),
-    setLoading: (isLoading) => set({ isLoading }),
-    setSearchQuery: (searchQuery) => set({ searchQuery }),
+            setNotes: (notes) => set({ notes }),
+            setActiveNote: (noteId) => set({ activeNoteId: noteId }),
+            setLoading: (isLoading) => set({ isLoading }),
+            setSearchQuery: (searchQuery) => set({ searchQuery }),
+            setProvider: (provider) => set({ selectedProvider: provider }),
 
-    addNote: (note) => set((state) => ({
-        notes: [note, ...state.notes],
-        activeNoteId: note.id
-    })),
+            addNote: (note) => set((state) => ({
+                notes: [note, ...state.notes],
+                activeNoteId: note.id
+            })),
 
-    updateNote: (noteId, updates) => set((state) => ({
-        notes: state.notes.map((note) =>
-            note.id === noteId ? { ...note, ...updates, updatedAt: new Date().toISOString() } : note
-        )
-    })),
+            updateNote: (noteId, updates) => set((state) => ({
+                notes: state.notes.map((note) =>
+                    note.id === noteId ? { ...note, ...updates, updatedAt: new Date().toISOString() } : note
+                )
+            })),
 
-    deleteNote: (noteId) => set((state) => {
-        const newNotes = state.notes.filter((note) => note.id !== noteId);
-        return {
-            notes: newNotes,
-            activeNoteId: state.activeNoteId === noteId
-                ? (newNotes[0]?.id || null)
-                : state.activeNoteId
-        };
-    }),
+            deleteNote: (noteId) => set((state) => {
+                const newNotes = state.notes.filter((note) => note.id !== noteId);
+                return {
+                    notes: newNotes,
+                    activeNoteId: state.activeNoteId === noteId
+                        ? (newNotes[0]?.id || null)
+                        : state.activeNoteId
+                };
+            }),
 
-    getActiveNote: () => {
-        const state = get();
-        return state.notes.find((note) => note.id === state.activeNoteId);
-    },
-
-    getFilteredNotes: () => {
-        const state = get();
-        if (!state.searchQuery) return state.notes;
-        const query = state.searchQuery.toLowerCase();
-        return state.notes.filter(
-            note => note.title.toLowerCase().includes(query) ||
-                note.content.toLowerCase().includes(query)
-        );
-    }
-}));
-
-// Execution Store - manages code execution state
-export const useExecutionStore = create((set) => ({
-    isExecuting: false,
-    output: '',
-    error: null,
-    executionTime: null,
-    history: [],
-    compilers: {
-        python: { available: null, version: null },
-        java: { available: null, version: null },
-        javascript: { available: null, version: null }
-    },
-    showOutput: false,
-    input: '',
-
-    setExecuting: (isExecuting) => set({ isExecuting }),
-    setOutput: (output) => set({ output, showOutput: true }),
-    setError: (error) => set({ error }),
-    setExecutionTime: (executionTime) => set({ executionTime }),
-    setShowOutput: (showOutput) => set({ showOutput }),
-    setInput: (input) => set({ input }),
-
-    setCompilerStatus: (language, status) => set((state) => ({
-        compilers: {
-            ...state.compilers,
-            [language]: status
-        }
-    })),
-
-    addToHistory: (entry) => set((state) => ({
-        history: [
-            {
-                id: Date.now(),
-                timestamp: new Date().toISOString(),
-                ...entry
+            getActiveNote: () => {
+                const state = get();
+                return state.notes.find((note) => note.id === state.activeNoteId);
             },
-            ...state.history
-        ].slice(0, 20) // Keep last 20 entries
-    })),
 
-    clearOutput: () => set({ output: '', error: null, executionTime: null }),
+            getFilteredNotes: () => {
+                const state = get();
+                if (!state.searchQuery) return state.notes;
+                const query = state.searchQuery.toLowerCase();
+                return state.notes.filter(
+                    note => note.title.toLowerCase().includes(query) ||
+                        note.content.toLowerCase().includes(query)
+                );
+            }
+        }),
+        {
+            name: 'roolts-notes-storage',
+            partialize: (state) => ({
+                selectedProvider: state.selectedProvider
+            })
+        }
+    )
+);
 
-    clearHistory: () => set({ history: [] }),
+// Execution Store - manages code execution state (persisted compilers)
+export const useExecutionStore = create(
+    persist(
+        (set, get) => ({
+            isExecuting: false,
+            output: '',
+            error: null,
+            executionTime: null,
+            history: [],
+            compilers: {
+                python: { available: null, version: null },
+                java: { available: null, version: null },
+                javascript: { available: null, version: null }
+            },
+            showOutput: false,
+            input: '',
+            inputRequestOpen: false,
 
-    reset: () => set({
-        isExecuting: false,
-        output: '',
-        error: null,
-        executionTime: null,
-        showOutput: false
-    })
-}));
+
+            setExecuting: (isExecuting) => set({ isExecuting }),
+            setOutput: (output) => set({ output, showOutput: true }),
+            setError: (error) => set({ error }),
+            setExecutionTime: (executionTime) => set({ executionTime }),
+            setShowOutput: (showOutput) => set({ showOutput }),
+            setInput: (input) => set({ input }),
+            setInputRequestOpen: (inputRequestOpen) => set({ inputRequestOpen }),
+
+
+            setCompilerStatus: (language, status) => set((state) => ({
+                compilers: {
+                    ...state.compilers,
+                    [language]: status
+                }
+            })),
+
+            addToHistory: (entry) => set((state) => ({
+                history: [
+                    {
+                        id: Date.now(),
+                        timestamp: new Date().toISOString(),
+                        ...entry
+                    },
+                    ...state.history
+                ].slice(0, 20) // Keep last 20 entries
+            })),
+
+            clearOutput: () => set({ output: '', error: null, executionTime: null }),
+
+            clearHistory: () => set({ history: [] }),
+
+            reset: () => set({
+                isExecuting: false,
+                output: '',
+                error: null,
+                executionTime: null,
+                showOutput: false
+            })
+        }),
+        {
+            name: 'roolts-execution-storage',
+            partialize: (state) => ({
+                compilers: state.compilers,
+                history: state.history
+            })
+        }
+    )
+);
 
 // Terminal Store - manages integrated terminal state (persisted history)
 export const useTerminalStore = create(
@@ -638,3 +603,29 @@ export const useSnippetStore = create((set) => ({
         snippets: state.snippets.filter(s => s.id !== id)
     }))
 }));
+
+// Extension Store - manages installed VS Code extensions (persisted)
+export const useExtensionStore = create(
+    persist(
+        (set, get) => ({
+            installedExtensions: [], // Array of extension objects {id, name, namespace, version, iconUrl, description}
+
+            installExtension: (extension) => set((state) => {
+                if (state.installedExtensions.find(e => e.id === extension.id)) return state;
+                return { installedExtensions: [...state.installedExtensions, extension] };
+            }),
+
+            uninstallExtension: (id) => set((state) => ({
+                installedExtensions: state.installedExtensions.filter(e => e.id !== id)
+            })),
+
+            isInstalled: (id) => {
+                const state = get();
+                return state.installedExtensions.some(e => e.id === id);
+            }
+        }),
+        {
+            name: 'roolts-extension-storage'
+        }
+    )
+);

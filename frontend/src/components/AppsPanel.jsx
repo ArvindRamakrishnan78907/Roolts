@@ -1,14 +1,17 @@
 import React, { useState } from 'react';
-import { FiGrid, FiActivity, FiMessageSquare, FiCode, FiPhone, FiCpu, FiMusic, FiPackage, FiSettings, FiCamera, FiChrome, FiMap, FiMail } from 'react-icons/fi';
+import { FiGrid, FiActivity, FiMessageSquare, FiCode, FiPhone, FiCpu, FiMusic, FiPackage, FiSettings, FiCamera, FiChrome, FiMap, FiMail, FiZap } from 'react-icons/fi';
 import CallingPanel from './CallingPanel';
+import { useSettingsStore } from '../store';
 
 const AppsPanel = ({ onOpenApp }) => {
     const [activeAppId, setActiveAppId] = useState(null);
+    const { experimental } = useSettingsStore();
 
     // Built-in apps
     const apps = [
+        ...(experimental?.vscodeApp ? [{ id: 'vscode', name: 'VS Code', icon: <FiPackage />, color: '#007acc' }] : []),
         { id: 'notes', name: 'Notes', icon: <FiMessageSquare />, color: '#f1c40f' },
-        { id: 'calc', name: 'Calculator', icon: <FiActivity />, color: '#e74c3c' },
+        { id: 'codechamp', name: 'CodeChamp', icon: <FiZap />, color: '#8e44ad' },
         { id: 'quickpython', name: 'Quick Python', icon: <FiCode />, color: '#3498db' },
         { id: 'calls', name: 'Calls', icon: <FiPhone />, color: '#2ecc71' },
     ];

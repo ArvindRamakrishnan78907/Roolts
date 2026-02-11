@@ -128,10 +128,15 @@ class TerminalSession:
                 'cwd': self.working_dir
             }
         except Exception as e:
+            import traceback
+            tb = traceback.format_exc()
+            # Log the full stack trace to the console for debugging
+            print(f"[TerminalSession.execute] Exception: {e}\n{tb}")
             return {
                 'success': False,
                 'output': '',
                 'error': str(e),
+                'traceback': tb,
                 'cwd': self.working_dir
             }
 
@@ -139,9 +144,11 @@ class TerminalSession:
 def get_session(session_id='default'):
     """Get or create a terminal session"""
     if session_id not in terminal_sessions:
-        # Default to the roolts project directory
-        project_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-        terminal_sessions[session_id] = TerminalSession(project_dir)
+        # Default to the roolts project root directory (one level up from 'backend')
+        # __file__ is .../backend/routes/terminal.py
+        # parent^3 is the project root
+        project_dir = Path(__file__).parent.parent.parent.absolute()
+        terminal_sessions[session_id] = TerminalSession(str(project_dir))
     return terminal_sessions[session_id]
 
 
