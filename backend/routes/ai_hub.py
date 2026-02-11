@@ -14,32 +14,36 @@ ai_hub_bp = Blueprint('ai_hub', __name__)
 
 
 def get_user_ai_service():
-    """Get AI service configured with user's API keys or env vars as fallback."""
+    """Get AI service configured with a merge of user's API keys and env vars."""
     user = get_current_user()
-    user_keys = {}
     
+    # 1. Base from Environment
+    raw_deepseek = os.getenv('DEEPSEEK_API_KEY')
+    env_keys = {
+        'gemini': os.getenv('GEMINI_API_KEY'),
+        'claude': os.getenv('CLAUDE_API_KEY'),
+        'deepseek': raw_deepseek,
+        'qwen': os.getenv('QWEN_API_KEY'),
+        'huggingface': os.getenv('HF_TOKEN')
+    }
+    env_keys = {k: v for k, v in env_keys.items() if v and not v.startswith('your-')}
+    
+    # 2. Add user's stored API keys (they take precedence if they exist)
+    user_keys = {}
     if user:
         user_keys = {
             'gemini': user.gemini_api_key,
             'claude': user.claude_api_key,
             'deepseek': user.deepseek_api_key,
-            'qwen': user.qwen_api_key
+            'qwen': user.qwen_api_key,
+            'huggingface': getattr(user, 'hf_token', None) if hasattr(user, 'hf_token') else None
         }
-        # Filter out None values
+        # CRITICAL: Only include keys that the user HAS actually set
         user_keys = {k: v for k, v in user_keys.items() if v}
     
-    # If no user keys, fall back to environment variables
-    if not user_keys:
-        user_keys = {
-            'gemini': os.getenv('GEMINI_API_KEY'),
-            'claude': os.getenv('CLAUDE_API_KEY'),
-            'deepseek': os.getenv('DEEPSEEK_API_KEY'),
-            'qwen': os.getenv('QWEN_API_KEY')
-        }
-        # Filter out None/empty/placeholder values
-        user_keys = {k: v for k, v in user_keys.items() if v and not v.startswith('your-')}
-    
-    return MultiAIService(user_keys)
+    # 3. Merge: User keys overwrite Env keys ONLY if user keys are present
+    final_keys = {**env_keys, **user_keys}
+    return MultiAIService(final_keys)
 
 
 @ai_hub_bp.route('/models', methods=['GET'])
@@ -76,6 +80,13 @@ def list_models():
             'description': 'Best for multilingual content and Asian languages',
             'strengths': ['Multilingual', 'Chinese', 'Translation'],
             'available': 'qwen' in available
+        },
+        'huggingface': {
+            'name': 'DeepSeek-R1 (Llama-8B)',
+            'icon': '🧠',
+            'description': 'Advanced reasoning model for complex algorithms and logic',
+            'strengths': ['Reasoning', 'Complex Logic', 'Deep Analysis'],
+            'available': 'huggingface' in available
         }
     }
     
@@ -90,12 +101,10 @@ def list_models():
 def chat():
     """
     Send a message to an AI model.
-    
-    Request body:
-    - prompt: The message to send (required)
-    - model: 'auto', 'gemini', 'claude', 'deepseek', or 'qwen' (default: 'auto')
-    - system_prompt: Optional system instructions
     """
+    import asyncio
+    from utils.async_utils import run_async
+
     data = request.get_json()
     prompt = data.get('prompt', '').strip()
     model = data.get('model', 'auto')
@@ -105,7 +114,13 @@ def chat():
         return jsonify({'error': 'Prompt is required'}), 400
     
     service = get_user_ai_service()
-    result = service.chat(prompt, model, system_prompt)
+    
+    # EXECUTE ASYNC
+    try:
+        result = run_async(service.chat(prompt, model, system_prompt))
+    except Exception as e:
+        print(f"AI Hub Chat Error: {e}")
+        return jsonify({'error': str(e)}), 500
     
     if 'error' in result:
         return jsonify(result), 400
@@ -117,11 +132,10 @@ def chat():
 def suggest():
     """
     Get AI suggestions while typing.
-    For real-time suggestions as user composes messages.
-    
-    Request body:
-    - text: Partial text to get suggestions for
     """
+    import asyncio
+    from utils.async_utils import run_async
+
     data = request.get_json()
     text = data.get('text', '').strip()
     
@@ -129,7 +143,13 @@ def suggest():
         return jsonify({'suggestions': []})
     
     service = get_user_ai_service()
-    result = service.suggest(text)
+    
+    # EXECUTE ASYNC
+    try:
+        result = run_async(service.suggest(text))
+    except Exception as e:
+        print(f"AI Suggest Error: {e}")
+        return jsonify({'suggestions': []}) # Fail silently for suggestions
     
     return jsonify(result)
 
@@ -138,10 +158,6 @@ def suggest():
 def analyze_prompt():
     """
     Analyze a prompt to explain which AI would be best.
-    Useful for showing users why a particular model was selected.
-    
-    Request body:
-    - prompt: The prompt to analyze
     """
     data = request.get_json()
     prompt = data.get('prompt', '').strip()
@@ -150,6 +166,8 @@ def analyze_prompt():
         return jsonify({'error': 'Prompt is required'}), 400
     
     service = get_user_ai_service()
+    # get_available_models is sync (it just checks keys/config), but let's double check implementation
+    # defined in MultiAIService, straightforward sync method.
     available = service.get_available_models()
     
     selector = AISelector(available)
@@ -174,9 +192,9 @@ def analyze_prompt():
 @ai_hub_bp.route('/stream', methods=['POST'])
 def stream_chat():
     """
-    Stream a chat response (for real-time display).
-    Note: This is a placeholder - full streaming requires SSE or WebSocket.
+    Stream a chat response.
     """
     # For now, return the same as regular chat
-    # Real implementation would use Server-Sent Events
+    # To properly implement stream, we'd need a different approach with Response(generator())
+    # But current implementation was just 'await chat()', so we keep it simple.
     return chat()

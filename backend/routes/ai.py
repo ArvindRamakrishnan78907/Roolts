@@ -3,44 +3,45 @@ import re
 from flask import Blueprint, jsonify, request
 from services.multi_ai import MultiAIService
 from routes.auth import get_current_user
+from utils.async_utils import run_async
+import asyncio
 
 ai_bp = Blueprint('ai', __name__)
 
 def get_ai_service():
-    """Get AI service configured with user's API keys or env vars as fallback."""
+    """Get AI service configured with a merge of user's API keys and env vars."""
     user = get_current_user()
+    
+    # 1. Start with environment variables as the base
+    raw_deepseek = os.getenv('DEEPSEEK_API_KEY')
+    env_keys = {
+        'gemini': os.getenv('GEMINI_API_KEY'),
+        'claude': os.getenv('CLAUDE_API_KEY'),
+        'deepseek': raw_deepseek,
+        'qwen': os.getenv('QWEN_API_KEY'),
+        'huggingface': os.getenv('HF_TOKEN')
+    }
+    # Filter out placeholders
+    env_keys = {k: v for k, v in env_keys.items() if v and not v.startswith('your-')}
+    
+    # 2. Add user's stored API keys (they take precedence if they exist)
     user_keys = {}
-    
-    print(f">>> get_ai_service - User logged in: {user is not None}")
-    
     if user:
-        # Use user's stored API keys if available
         user_keys = {
             'gemini': user.gemini_api_key,
             'claude': user.claude_api_key,
             'deepseek': user.deepseek_api_key,
-            'qwen': user.qwen_api_key
+            'qwen': user.qwen_api_key,
+            'huggingface': getattr(user, 'hf_token', None) if hasattr(user, 'hf_token') else None
         }
-        # Filter out None values
+        # CRITICAL: Only include keys that the user HAS actually set to avoid overwriting env vars with None
         user_keys = {k: v for k, v in user_keys.items() if v}
-        print(f">>> Using user keys: {list(user_keys.keys())}")
     
-    # If no user keys, fall back to environment variables
-    if not user_keys:
-        raw_deepseek = os.getenv('DEEPSEEK_API_KEY')
-        print(f">>> Reading DEEPSEEK_API_KEY from env: {raw_deepseek[:15] if raw_deepseek and len(raw_deepseek) > 15 else raw_deepseek}...")
-        
-        user_keys = {
-            'gemini': os.getenv('GEMINI_API_KEY'),
-            'claude': os.getenv('CLAUDE_API_KEY'),
-            'deepseek': raw_deepseek,
-            'qwen': os.getenv('QWEN_API_KEY')
-        }
-        # Filter out None/empty/placeholder values
-        user_keys = {k: v for k, v in user_keys.items() if v and not v.startswith('your-')}
-        print(f">>> After filter - Keys available: {list(user_keys.keys())}")
+    # 3. Merge: User keys overwrite Env keys ONLY if user keys are present
+    final_keys = {**env_keys, **user_keys}
     
-    return MultiAIService(user_keys)
+    # print(f">>> MultiAIService init - Combined Keys available: {list(final_keys.keys())}")
+    return MultiAIService(final_keys)
 
 
 def detect_language(code):
@@ -223,23 +224,52 @@ def explain_code():
         language = detect_language(code)
     
     service = get_ai_service()
-    system_prompt = "You are a helpful coding assistant. Explain the following code in a clear, educational way. Use markdown formatting."
-    prompt = f"Please explain this {language} code:\n\n```{language}\n{code}\n```"
     
-    result = service.chat(prompt, model='auto', system_prompt=system_prompt)
-    
-    if 'error' in result:
-        explanation = generate_mock_explanation(code, language)
-        # Add a note that it's a mock due to error
-        explanation = f"> [!WARNING]\n> AI Analysis failed ({result['error']}). Showing mock analysis instead.\n\n" + explanation
-    else:
-        explanation = result.get('response', '')
+    # Use the specialized explainer service
+    try:
+        # EXECUTE ASYNC
+        result = run_async(service.explainer.explain_code(code, language))
+        
+        if 'error' in result:
+             # Fallback to mock if error
+             explanation = generate_mock_explanation(code, language)
+             explanation = f"> [!WARNING]\n> AI Analysis failed ({result['error']}). Showing mock analysis instead.\n\n" + explanation
+             provider = 'Mock'
+             model = 'Mock'
+        else:
+             overview = result.get('overview', '')
+             concepts = result.get('key_concepts', [])
+             flow = result.get('logic_flow', '')
+             complexity = result.get('complexity', '')
+             adivce = result.get('improvement_suggestions', [])
+             
+             explanation = f"### Overview\n{overview}\n\n"
+             
+             if concepts:
+                 explanation += "### Key Concepts\n" + "\n".join([f"- {c}" for c in concepts]) + "\n\n"
+                 
+             explanation += f"### Logic Flow\n{flow}\n\n"
+             
+             if complexity:
+                 explanation += f"### Complexity\n{complexity}\n\n"
+                 
+             if adivce:
+                 explanation += "### Improvements\n" + "\n".join([f"- {a}" for a in adivce])
+             
+             provider = 'DeepSeek (Async)'
+             model = 'deepseek-coder'
+
+    except Exception as e:
+        # explanation = generate_mock_explanation(code, language)
+        explanation = f"> [!ERROR]\n> System Error: {str(e)}\n\n"
+        provider = 'System'
+        model = 'Error'
     
     return jsonify({
         'explanation': explanation,
         'language': language,
-        'provider': result.get('provider', 'Mock'),
-        'model': result.get('model', 'Mock')
+        'provider': provider,
+        'model': model
     })
 
 
@@ -261,7 +291,8 @@ def generate_diagram():
     system_prompt = "You are a code visualization expert. Generate Mermaid.js diagram code based on the provided code. Return ONLY the Mermaid diagram code, no markdown code blocks."
     prompt = f"Create a {diagram_type} diagram for this {language} code:\n\n{code}"
     
-    result = service.chat(prompt, model='deepseek', system_prompt=system_prompt)
+    # EXECUTE ASYNC
+    result = run_async(service.chat(prompt, model='deepseek', system_prompt=system_prompt))
     
     if 'error' in result:
         diagram = generate_mock_diagram(code, language)
@@ -312,35 +343,51 @@ def analyze_code():
     
     service = get_ai_service()
     
-    from concurrent.futures import ThreadPoolExecutor
-    
-    def get_explanation():
-        return service.chat(
-            f"Analyze this {language} code and explain it:\n\n{code}",
-            system_prompt="Analyze the code for a developer portfolio. Provide a professional explanation."
-        )
-    
-    def get_diagram():
-        return service.chat(
-            f"Generate a Mermaid flowchart for this {language} code:\n\n{code}",
-            model='deepseek',
-            system_prompt="Return ONLY the Mermaid.js graph code. No markdown."
-        )
+    # Define async tasks wrapper
+    async def run_analysis_tasks():
+        # Task 1: Explanation via AIExplainerService
+        async def get_explanation():
+            try:
+                return await service.explainer.explain_code(code, language)
+            except Exception as e:
+                return {'error': str(e)}
 
-    # Use ThreadPoolExecutor for parallelism
-    with ThreadPoolExecutor(max_workers=2) as executor:
-        future_expl = executor.submit(get_explanation)
-        future_diag = executor.submit(get_diagram)
-        
-        expl_result = future_expl.result()
-        diag_result = future_diag.result()
+        # Task 2: Diagram via Chat (DeepSeek)
+        async def get_diagram():
+            return await service.chat(
+                f"Generate a Mermaid flowchart for this {language} code:\n\n{code}",
+                model='deepseek',
+                system_prompt="Return ONLY the Mermaid.js graph code. No markdown."
+            )
+
+        return await asyncio.gather(get_explanation(), get_diagram())
+
+    # EXECUTE ASYNC TASKS
+    try:
+        expl_result, diag_result = run_async(run_analysis_tasks())
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
     
     # 1. Explanation processing
     if 'error' in expl_result:
         explanation = generate_mock_explanation(code, language)
         explanation = f"> [!WARNING]\n> AI Explanation failed ({expl_result['error']}). Showing mock analysis.\n\n" + explanation
+        provider = 'Mock'
     else:
-        explanation = expl_result.get('response', '')
+        # Format structured explanation
+        overview = expl_result.get('overview', '')
+        concepts = expl_result.get('key_concepts', [])
+        flow = expl_result.get('logic_flow', '')
+        complexity = expl_result.get('complexity', '')
+        adivce = expl_result.get('improvement_suggestions', [])
+        
+        explanation = f"### Overview\n{overview}\n\n"
+        if concepts: explanation += "### Key Concepts\n" + "\n".join([f"- {c}" for c in concepts]) + "\n\n"
+        explanation += f"### Logic Flow\n{flow}\n\n"
+        if complexity: explanation += f"### Complexity\n{complexity}\n\n"
+        if adivce: explanation += "### Improvements\n" + "\n".join([f"- {a}" for a in adivce])
+        
+        provider = 'DeepSeek (Async)'
     
     # 2. Diagram processing
     if 'error' in diag_result:
@@ -358,7 +405,7 @@ def analyze_code():
         'diagram': diagram,
         'resources': resources,
         'language': language,
-        'provider': expl_result.get('provider', 'Mock') if 'error' not in expl_result else 'Mock'
+        'provider': provider
     })
 
 
@@ -409,134 +456,108 @@ def review_code():
     if not code:
         return jsonify({'error': 'Code is required'}), 400
     
-    # Initialize Multi-AI Service with environment API keys
     service = get_ai_service()
     
-    # Strict System Prompt for JSON Output
-    system_prompt = (
-        "You are a strict automated code review agent. Your job is to analyze the provided code "
-        "for bugs, security vulnerabilities, and code style issues. "
-        "You MUST return the result EXACTLY as a valid JSON object with the following structure: "
-        "{ 'issues': [ { 'type': 'error'|'warning'|'info', 'line': <number_or_null>, "
-        "'message': '<concise_description>', 'fix': '<suggested_fix_code_or_explanation>' } ] }. "
-        "Do not include any markdown formatting (like ```json), commentary, or extra text outside the JSON. "
-        "If the code is perfect, return { 'issues': [] }."
-    )
-    
-    prompt = f"Review this {language} code:\n\n{code}"
-    
     try:
-        # Prefer 'deepseek' or 'claude' for reasoning, fall back to 'auto'
-        # Since we don't have explicit model selection in the request, we rely on the service's smart router
-        # But we can hint via the system prompt context. 
-        # For now, we will use 'auto' which should pick a strong model for coding.
-        result = service.chat(prompt, model='deepseek', system_prompt=system_prompt)
+        # EXECUTE ASYNC
+        result = run_async(service.code_champ.analyze_code(code, language))
         
-        # The service returns a dict, we need to extract the content and parse it as JSON
-        # The MultiAIService.chat returns: { 'content': ..., 'provider': ..., 'model': ... }
-        content = result.get('content', '')
-        
-        # Clean up potential markdown formatting if the AI ignores strict instructions
-        content = content.strip()
-        if content.startswith('```json'):
-            content = content[7:]
-        if content.startswith('```'):
-            content = content[3:]
-        if content.endswith('```'):
-            content = content[:-3]
-        content = content.strip()
-        
-        import json
-        try:
-            review_data = json.loads(content)
-        except json.JSONDecodeError:
-            # Fallback if AI fails to generate valid JSON
-            review_data = {
-                'issues': [
-                    {
-                        'type': 'warning',
-                        'line': None,
-                        'message': 'AI failed to generate structured review. Raw output attached.',
-                        'fix': content
-                    }
-                ]
-            }
+        if 'error' in result:
+             return jsonify({
+                'review': {'issues': [{'type': 'warning', 'message': f"AI Analysis failed: {result['error']}"}]},
+                'provider': 'System',
+                'model': 'Error'
+            })
+            
+        # Map AnalysisResult to frontend format
+        issues = []
+        for bug in result.get('bugs', []):
+            severity_map = {'critical': 'error', 'major': 'warning', 'minor': 'info'}
+            issues.append({
+                'type': severity_map.get(bug.get('severity', 'minor'), 'info'),
+                'line': bug.get('line'),
+                'message': bug.get('description'),
+                'fix': bug.get('suggestion')
+            })
+            
+        for sec in result.get('security_issues', []):
+            issues.append({
+                'type': 'error',
+                'message': f"Security: {sec}",
+                'fix': 'Review security best practices.'
+            })
             
         return jsonify({
-            'review': review_data,
-            'provider': result.get('provider'),
-            'model': result.get('model')
+            'review': {'issues': issues},
+            'provider': 'DeepSeek (Async)',
+            'model': 'deepseek-coder'
         })
 
     except Exception as e:
         print(f"Code review failed: {str(e)}")
         return jsonify({'error': str(e)}), 500
+
+
 @ai_bp.route('/chat', methods=['POST'])
 def chat_with_ai():
     """Handle interactive chat about code."""
-    data = request.get_json()
-    code = data.get('code', '')
-    language = data.get('language', '')
-    query = data.get('query', '')
-    history = data.get('history', []) # List of {role: 'user'|'assistant', content: '...'}
+    try:
+        data = request.get_json()
+        code = data.get('code', '')
+        language = data.get('language', '')
+        query = data.get('query', '')
+        history = data.get('history', []) 
+        
+        if not query:
+            return jsonify({'error': 'Query is required'}), 400
+        
+        if not language and code:
+            language = detect_language(code)
+        
+        service = get_ai_service()
+        
+        system_prompt = (
+            "You are an expert full-stack developer and technical mentor code. "
+            "Your goal is to help the user understand, debug, and optimize their code. "
+            "Provide specific, technical, and actionable advice. "
+            "Always use markdown for code snippets. "
+            "If the user asks for changes, explain why they are beneficial."
+        )
+        
+        messages = []
+        if code:
+            system_prompt += f"\n\nContext Code ({language}):\n```{language}\n{code}\n```"
+            system_prompt += "\n\nRefer to the code above when answering the user's questions."
     
-    if not query:
-        return jsonify({'error': 'Query is required'}), 400
-    
-    if not language and code:
-        language = detect_language(code)
-    
-    service = get_ai_service()
-    
-    # Construct context-aware system prompt
-    system_prompt = (
-        "You are an expert full-stack developer and technical mentor. "
-        "Your goal is to help the user understand, debug, and optimize their code. "
-        "Provide specific, technical, and actionable advice. "
-        "Always use markdown for code snippets. "
-        "If the user asks for changes, explain why they are beneficial."
-    )
-    
-    # Build structured messages
-    messages = []
-    
-    # SYSTEM PROMPT
-    # We pass this as the separate system_prompt argument where possible, 
-    # but some providers like OpenAI/DeepSeek treat it as the first message with role 'system'.
-    # `service.chat` handles `system_prompt` argument correctly for each provider.
-    
-    # Add Context Code to System Prompt
-    if code:
-        system_prompt += f"\n\nContext Code ({language}):\n```{language}\n{code}\n```"
-        system_prompt += "\n\nRefer to the code above when answering the user's questions."
-
-    # HISTORY
-    # Convert frontend history format {role, content} to backend format
-    # Frontend sends: [{role: 'user'|'assistant', content: '...'}, ...]
-    if history:
-         for msg in history:
-             role = msg.get('role', 'user')
-             # Map 'assistant' to provider specific if needed, but 'assistant' is standard for OAI/Claude/DeepSeek
-             messages.append({'role': role, 'content': msg.get('content', '')})
-    
-    # CURRENT USER QUERY
-    messages.append({'role': 'user', 'content': query})
-    
-    # We pass system_prompt separately, and messages list.
-    # We still pass 'query' as 'prompt' for the auto-selector logic (it needs a string to analyze).
-    
-    result = service.chat(
-        prompt=query, 
-        model='deepseek', # Defaulting to deepseek for code chat as per original code
-        system_prompt=system_prompt,
-        messages=messages
-    )
+        if history:
+             for msg in history:
+                 role = msg.get('role', 'user')
+                 messages.append({'role': role, 'content': msg.get('content', '')})
+        
+        messages.append({'role': 'user', 'content': query})
+        
+        # EXECUTE ASYNC
+        result = run_async(service.chat(
+            prompt=query, 
+            model='deepseek', # Prefer DeepSeek for coding chat
+            system_prompt=system_prompt,
+            messages=messages
+        ))
+    except Exception as e:
+        print(f"Chat Route Error: {e}")
+        import traceback
+        traceback.print_exc()
+        return jsonify({
+            'response': f"> [!ERROR]\n> **System Error**: {str(e)}\n\nPlease try again later.",
+            'model': 'error',
+            'provider': 'System'
+        })
     
     if 'error' in result:
         return jsonify({
-            'response': f"> [!CAUTION]\n> **AI Error**: {result['error']}\n\nPlease check your API keys in Settings or try again later.",
-            'model': 'error',
-            'provider': 'System'
+            'response': f"> [!CAUTION]\n> **AI Error ({result.get('model', 'unknown')})**: {result['error']}\n\nPlease check your API keys or try a different model.",
+            'model': result.get('model', 'error'),
+            'provider': result.get('provider', 'System')
         })
     
     return jsonify({
@@ -544,3 +565,101 @@ def chat_with_ai():
         'model': result.get('model', 'unknown'),
         'provider': result.get('provider', 'unknown')
     })
+
+
+@ai_bp.route('/code-champ', methods=['POST'])
+def code_champ_analysis():
+    """Perform competitive programming analysis or specialized code generation."""
+    try:
+        data = request.get_json()
+        code = data.get('code', '')
+        language = data.get('language', '')
+        action = data.get('action', 'analyze') 
+        
+        if not code and action != 'scrape':
+            return jsonify({'error': 'Code is required'}), 400
+        
+        if not language:
+            language = detect_language(code)
+        
+        service = get_ai_service()
+        
+        # 1. Handle Web Scraper Generation
+        if action == 'scrape':
+            url = data.get('url', 'https://example.com')
+            target_data = data.get('target', 'all headers and paragraphs')
+            
+            system_prompt = "You are a web scraping expert. Generate concise, production-ready Python code using BeautifulSoup or Playwright."
+            prompt = f"Generate a Python web scraper for {url} to extract {target_data}. Return ONLY the code in a JSON object under the 'result' key."
+            
+            # EXECUTE ASYNC
+            result = run_async(service.chat(prompt, model='deepseek', system_prompt=system_prompt))
+            content = result.get('response', '').strip()
+            
+            return jsonify({
+                'action': 'scrape',
+                'result': content,
+                'provider': result.get('provider', 'AI')
+            })
+
+        # 2. Standard CodeChamp Analysis
+        system_prompt = (
+            "You are an expert competitive programmer. "
+            "Analyze the provided code for time complexity, space complexity, and performance bottlenecks. "
+            "Suggest a more optimal solution if possible. "
+            "Return ONLY a JSON object with keys: 'timeComplexity', 'spaceComplexity', 'betterThan', 'recommendations' (list), 'optimalSolution' (object with 'code', 'explanation', 'language')."
+        )
+        
+        prompt = f"Analyze this {language} code for competitive programming efficiency:\n\n{code}"
+        
+        # EXECUTE ASYNC
+        result = run_async(service.chat(prompt, model='deepseek', system_prompt=system_prompt))
+    except Exception as e:
+        print(f"CodeChamp Route Error: {e}")
+        import traceback
+        traceback.print_exc()
+        return jsonify({
+            'error': f"Processing Error: {str(e)}",
+            'timeComplexity': 'N/A',
+            'spaceComplexity': 'N/A',
+            'optimalSolution': {'code': code, 'explanation': f"System Error: {str(e)}", 'language': language},
+            'provider': 'System'
+        })
+    
+    if 'error' in result:
+        return jsonify({
+            'error': f"AI Analysis Error: {result['error']}",
+            'timeComplexity': 'N/A',
+            'spaceComplexity': 'N/A',
+            'optimalSolution': {'code': code, 'explanation': f"Analysis failed: {result['error']}", 'language': language},
+            'provider': result.get('provider', 'System')
+        })
+
+    content = result.get('response', '').strip()
+    
+    if not content:
+            return jsonify({
+            'error': 'Empty response from AI', 
+            'optimalSolution': {'code': code, 'explanation': 'Analysis failed (Empty response).', 'language': language}
+        })
+
+    # Clean up markdown
+    import re
+    if content.startswith('```'):
+        content = re.sub(r'^```(json)?\n|```$', '', content, flags=re.MULTILINE).strip()
+    
+    import json
+    try:
+        analysis_data = json.loads(content)
+        return jsonify(analysis_data)
+    except json.JSONDecodeError:
+        return jsonify({
+            'timeComplexity': 'O(?)',
+            'spaceComplexity': 'O(?)',
+            'betterThan': '0%',
+            'performance': 0,
+            'variants': [],
+            'recommendations': ['AI generated invalid JSON'],
+            'optimalSolution': {'code': code, 'explanation': content, 'language': language},
+            'platformLinks': []
+        })

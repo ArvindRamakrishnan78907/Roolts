@@ -13,6 +13,10 @@ from pathlib import Path
 env_path = Path(__file__).parent / '.env'
 load_dotenv(dotenv_path=env_path)
 
+# PATCH: Apply nest_asyncio to allow nested event loops (Fixes 500 errors with SocketIO + Async)
+import nest_asyncio
+nest_asyncio.apply()
+
 # Import database models
 from models import db, init_db
 
@@ -21,8 +25,6 @@ from utils.compiler_manager import setup_compiler
 
 # Import routes
 from routes.files import files_bp
-from routes.github import github_bp
-from routes.social import social_bp
 from routes.ai import ai_bp
 from routes.auth import auth_bp
 from routes.ai_hub import ai_hub_bp
@@ -32,6 +34,7 @@ from routes.portfolio import portfolio_bp
 from routes.deployment import deployment_bp
 from routes.executor import executor_bp
 from routes.virtual_env import virtual_env_bp
+from routes.extension_proxy import extension_proxy_bp
 
 
 def create_app():
@@ -61,8 +64,6 @@ def create_app():
     app.register_blueprint(auth_bp, url_prefix='/api/auth')      # Authentication
     app.register_blueprint(ai_hub_bp, url_prefix='/api/ai-hub')  # Multi-AI Chat
     app.register_blueprint(files_bp, url_prefix='/api/files')    # File management
-    app.register_blueprint(github_bp, url_prefix='/api/github')  # GitHub integration
-    app.register_blueprint(social_bp, url_prefix='/api/social')  # Social posting
     app.register_blueprint(ai_bp, url_prefix='/api/ai')          # AI learning features
     app.register_blueprint(terminal_bp, url_prefix='/api/terminal')  # Terminal
     app.register_blueprint(snippets_bp, url_prefix='/api/snippets')  # Snippets
@@ -70,6 +71,7 @@ def create_app():
     app.register_blueprint(deployment_bp, url_prefix='/api/deployment')  # Deployment
     app.register_blueprint(executor_bp, url_prefix='/api/executor')  # Code Execution
     app.register_blueprint(virtual_env_bp, url_prefix='/api/virtual-env')  # Virtual Environments
+    app.register_blueprint(extension_proxy_bp, url_prefix='/api/extensions')  # Extension Marketplace Proxy
     
     # Health check endpoint
     @app.route('/api/health')
@@ -130,7 +132,22 @@ def create_app():
     
     @app.errorhandler(500)
     def internal_error(error):
-        return jsonify({'error': 'Internal server error', 'message': str(error)}), 500
+        import traceback
+        
+        # Try to get the original exception if wrapped
+        original_error = getattr(error, 'original_exception', error)
+        
+        print(f"!!! INTERNAL SERVER ERROR DETECTED: {original_error}")
+        traceback.print_exc()  # Print stack trace of the *current* exception context
+        
+        # Format the traceback of the TRUE cause
+        full_traceback = "".join(traceback.format_exception(type(original_error), original_error, original_error.__traceback__)) if hasattr(original_error, '__traceback__') else traceback.format_exc()
+        
+        return jsonify({
+            'error': 'Internal server error',
+            'message': full_traceback,
+            'exception': str(original_error)
+        }), 500
     
     return app
 
@@ -141,7 +158,7 @@ app = create_app()
 # Initialize SocketIO
 from flask_socketio import SocketIO, emit, join_room, leave_room
 
-socketio = SocketIO(app, cors_allowed_origins="*", async_mode='eventlet')
+socketio = SocketIO(app, cors_allowed_origins="*", async_mode='threading')
 
 # Socket Events
 @socketio.on('connect')
@@ -244,12 +261,13 @@ if __name__ == '__main__':
     print("\n>>> Roolts Backend Starting (with SocketIO)...")
     print("=" * 50)
     print("API Server: http://localhost:5000")
-    print("SocketIO:   Enabled")
+    print("SocketIO:   Enabled (Threading Mode)")
     print("Features:   Video Calling, Remote Control, Chat")
     print("=" * 50)
     print("\nPress Ctrl+C to stop\n")
     
     port = int(os.environ.get("PORT", 5000))
     # Use socketio.run instead of app.run
-    socketio.run(app, host='0.0.0.0', port=port, debug=os.environ.get("FLASK_DEBUG", "True") == "True")
+    # FORCE debug=True checks to confirm traceback
+    socketio.run(app, host='0.0.0.0', port=port, debug=True, allow_unsafe_werkzeug=True)
 
