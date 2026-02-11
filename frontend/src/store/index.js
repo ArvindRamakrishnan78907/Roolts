@@ -87,6 +87,7 @@ export default App;
             })),
 
             addFile: (name, content = '', language = 'plaintext') => {
+                let newFileId = null;
                 set((state) => {
                     const existingFile = state.files.find(f => f.name === name);
                     if (existingFile) {
@@ -105,6 +106,7 @@ export default App;
                     } else {
                         // Add new file
                         const id = Date.now().toString();
+                        newFileId = id;
                         return {
                             files: [
                                 ...state.files,
@@ -127,9 +129,11 @@ export default App;
                 const file = get().files.find(f => f.name === name);
                 if (file) {
                     get().setActiveFile(file.id);
-                    get().openFile(id);
+                    if (newFileId) {
+                        get().openFile(newFileId);
+                    }
                 }
-                return id;
+                return newFileId;
             },
 
             addHighlight: (fileId, highlight) => set((state) => ({

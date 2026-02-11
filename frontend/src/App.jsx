@@ -49,7 +49,8 @@ import {
     FiFilePlus,
     FiDelete,
     FiRotateCcw,
-    FiEdit2
+    FiEdit2,
+    FiFolderPlus
 } from 'react-icons/fi';
 import { collaborationService } from './services/collaborationService';
 import ReactMarkdown from 'react-markdown';
@@ -193,6 +194,9 @@ function FileExplorer() {
     const fileInputRef = React.useRef(null);
     const folderInputRef = React.useRef(null);
     const syncInitializedRef = React.useRef(false);
+    const [newItemName, setNewItemName] = useState('');
+    const [newItemType, setNewItemType] = useState('file'); // 'file' or 'folder'
+    const [showNewItemInput, setShowNewItemInput] = useState(false);
 
     // File Sync Integration - seamlessly sync with backend
     useEffect(() => {
@@ -425,6 +429,101 @@ function FileExplorer() {
         setContextMenu(null);
     }, [files, deleteFiles]);
 
+    // Backend file operations
+    const createFileInBackend = useCallback(async (fileName) => {
+        try {
+            const { fileSyncService } = await import('./services/fileSyncService');
+            const result = await fileSyncService.createItem(fileName, 'file', '');
+            if (result.success) {
+                // Add to frontend store
+                const language = getLanguageFromExtension(fileName);
+                addFile(fileName, '', language);
+                addNotification({ type: 'success', message: `File created: ${fileName}` });
+                return true;
+            } else {
+                addNotification({ type: 'error', message: `Failed to create file ${fileName}: ${result.error}` });
+                return false;
+            }
+        } catch (error) {
+            addNotification({ type: 'error', message: `Failed to create file ${fileName}: ${error.message}` });
+            return false;
+        }
+    }, [addFile, addNotification]);
+
+    const createFolderInBackend = useCallback(async (folderName) => {
+        try {
+            const { fileSyncService } = await import('./services/fileSyncService');
+            const result = await fileSyncService.createItem(folderName, 'directory');
+            if (result.success) {
+                addNotification({ type: 'success', message: `Folder created: ${folderName}` });
+                // Refresh the file tree to show the new folder
+                await refreshFileTree();
+                return true;
+            } else {
+                addNotification({ type: 'error', message: `Failed to create folder ${folderName}: ${result.error}` });
+                return false;
+            }
+        } catch (error) {
+            addNotification({ type: 'error', message: `Failed to create folder ${folderName}: ${error.message}` });
+            return false;
+        }
+    }, [addNotification]);
+
+    const deleteFileFromBackend = useCallback(async (fileName) => {
+        try {
+            const { fileSyncService } = await import('./services/fileSyncService');
+            const result = await fileSyncService.deleteItem(fileName);
+            if (result.success) {
+                // Remove from frontend store
+                const fileToDelete = files.find(f => f.name === fileName);
+                if (fileToDelete) {
+                    deleteFile(fileToDelete.id);
+                }
+                addNotification({ type: 'success', message: `File deleted: ${fileName}` });
+                return true;
+            } else {
+                addNotification({ type: 'error', message: `Failed to delete file ${fileName}: ${result.error}` });
+                return false;
+            }
+        } catch (error) {
+            addNotification({ type: 'error', message: `Failed to delete file ${fileName}: ${error.message}` });
+            return false;
+        }
+    }, [files, deleteFile, addNotification]);
+
+    const refreshFileTree = useCallback(async () => {
+        try {
+            const { fileSyncService } = await import('./services/fileSyncService');
+            const result = await fileSyncService.getFileTree();
+            if (result.success && result.data?.tree) {
+                // Update frontend store with backend files
+                const backendFiles = result.data.tree.filter(item => !item.isDirectory);
+                const currentFileNames = new Set(files.map(f => f.name));
+
+                // Add new files from backend
+                for (const backendFile of backendFiles) {
+                    if (!currentFileNames.has(backendFile.name)) {
+                        try {
+                            const contentResult = await fileSyncService.readFile(backendFile.path);
+                            if (contentResult.success) {
+                                const language = getLanguageFromExtension(backendFile.name);
+                                addFile(backendFile.name, contentResult.data.content || '', language);
+                            }
+                        } catch (error) {
+                            console.log('Could not read file:', backendFile.name);
+                        }
+                    }
+                }
+
+                addNotification({ type: 'success', message: 'File tree refreshed' });
+            } else {
+                addNotification({ type: 'error', message: 'Failed to refresh file tree' });
+            }
+        } catch (error) {
+            addNotification({ type: 'error', message: `Failed to refresh file tree: ${error.message}` });
+        }
+    }, [files, addFile, addNotification]);
+
     return (
         <div className="file-explorer" style={{ position: 'relative' }}>
             {/* Hidden file inputs */}
@@ -469,14 +568,100 @@ function FileExplorer() {
                     </button>
                     <button
                         className="btn btn--ghost btn--icon"
-                        onClick={() => openModal('newFile')}
+                        onClick={() => {
+                            setNewItemType('file');
+                            setShowNewItemInput(true);
+                        }}
                         title="New File"
                         style={{ padding: '4px' }}
                     >
-                        <FiPlus size={14} />
+                        <FiFile size={14} />
+                    </button>
+                    <button
+                        className="btn btn--ghost btn--icon"
+                        onClick={() => {
+                            setNewItemType('folder');
+                            setShowNewItemInput(true);
+                        }}
+                        title="New Folder"
+                        style={{ padding: '4px' }}
+                    >
+                        <FiFolderPlus size={14} />
+                    </button>
+                    <button
+                        className="btn btn--ghost btn--icon"
+                        onClick={refreshFileTree}
+                        title="Refresh"
+                        style={{ padding: '4px' }}
+                    >
+                        <FiRefreshCw size={14} />
                     </button>
                 </div>
             </div>
+
+            {/* New Item Input */}
+            {showNewItemInput && (
+                <div style={{ marginBottom: '8px', display: 'flex', gap: '4px' }}>
+                    <input
+                        type="text"
+                        value={newItemName}
+                        onChange={(e) => setNewItemName(e.target.value)}
+                        onKeyDown={(e) => {
+                            if (e.key === 'Enter' && newItemName.trim()) {
+                                if (newItemType === 'file') {
+                                    createFileInBackend(newItemName.trim());
+                                } else {
+                                    createFolderInBackend(newItemName.trim());
+                                }
+                                setNewItemName('');
+                                setShowNewItemInput(false);
+                            } else if (e.key === 'Escape') {
+                                setNewItemName('');
+                                setShowNewItemInput(false);
+                            }
+                        }}
+                        placeholder={`New ${newItemType} name...`}
+                        style={{
+                            flex: 1,
+                            padding: '4px 8px',
+                            border: '1px solid var(--border-primary)',
+                            borderRadius: '3px',
+                            backgroundColor: 'var(--bg-primary)',
+                            color: 'var(--text-primary)',
+                            fontSize: '12px'
+                        }}
+                        autoFocus
+                    />
+                    <button
+                        className="btn btn--primary btn--sm"
+                        onClick={() => {
+                            if (newItemName.trim()) {
+                                if (newItemType === 'file') {
+                                    createFileInBackend(newItemName.trim());
+                                } else {
+                                    createFolderInBackend(newItemName.trim());
+                                }
+                                setNewItemName('');
+                                setShowNewItemInput(false);
+                            }
+                        }}
+                        style={{ padding: '4px 8px', fontSize: '11px' }}
+                    >
+                        Create
+                    </button>
+                    <button
+                        className="btn btn--ghost btn--sm"
+                        onClick={() => {
+                            setNewItemName('');
+                            setShowNewItemInput(false);
+                        }}
+                        style={{ padding: '4px 8px', fontSize: '11px' }}
+                    >
+                        Cancel
+                    </button>
+                </div>
+            )}
+
             {((files || []).filter((file, index, arr) =>
                 arr.findIndex(f => f.name === file.name) === index
             )).map((file) => (
@@ -614,7 +799,10 @@ function FileExplorer() {
                         }}
                         className="context-menu-item"
                         onClick={() => {
-                            deleteFile(contextMenu.fileId);
+                            const file = files.find(f => f.id === contextMenu.fileId);
+                            if (file && window.confirm(`Are you sure you want to delete "${file.name}"?`)) {
+                                deleteFileFromBackend(file.name);
+                            }
                             setContextMenu(null);
                         }}
                     >
