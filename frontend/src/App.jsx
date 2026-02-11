@@ -1237,6 +1237,25 @@ function CodeEditor({ isScribbleMode, scribbleTool = 'pen', scribbleColor = '#ff
         }
     }, [addNotification, markFileSaved]);
 
+    // Auto-save function without notifications for seamless saving
+    const autoSaveFileToBackend = React.useCallback(async (file) => {
+        try {
+            const { fileSyncService } = await import('./services/fileSyncService');
+            const result = await fileSyncService.writeFile(
+                file.path.startsWith('/') ? file.path : `/${file.path}`,
+                file.content,
+                { encoding: 'utf-8' }
+            );
+            if (result.success) {
+                markFileSaved(file.id);
+                return true;
+            }
+            return false;
+        } catch (error) {
+            return false;
+        }
+    }, [markFileSaved]);
+
     // Global keyboard shortcuts
     React.useEffect(() => {
         const handleKeyDown = (e) => {
@@ -1473,13 +1492,13 @@ function CodeEditor({ isScribbleMode, scribbleTool = 'pen', scribbleColor = '#ff
                     updateFileContent(activeFile.id, newContent);
                     collaborationService.sendCodeChange(newContent, activeFile.id);
 
-                    // Auto-save to backend with debouncing
+                    // Auto-save to backend with debouncing (2 seconds)
                     if (autoSaveTimeoutRef.current) {
                         clearTimeout(autoSaveTimeoutRef.current);
                     }
                     autoSaveTimeoutRef.current = setTimeout(() => {
-                        saveFileToBackend({ ...activeFile, content: newContent });
-                    }, 1000); // Auto-save after 1 second of inactivity
+                        autoSaveFileToBackend({ ...activeFile, content: newContent });
+                    }, 2000); // Auto-save after 2 seconds of inactivity
                 }}
                 theme={getMonacoTheme(theme)}
                 options={{
