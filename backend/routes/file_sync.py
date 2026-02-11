@@ -140,7 +140,7 @@ class FileChangeHandler(BaseFileSystemEventHandler):  # type: ignore
             if SOCKETIO_AVAILABLE and self.socketio:
                 self.socketio.emit('file_change', {
                     'action': action,
-                    'path': file_path,
+                    'path': file_path.replace(os.sep, '/'),
                     'fileInfo': file_info,
                     'timestamp': datetime.now().isoformat()
                 }, room=f"user_{self.user_id}")
@@ -153,7 +153,7 @@ class FileChangeHandler(BaseFileSystemEventHandler):  # type: ignore
             if SOCKETIO_AVAILABLE and self.socketio:
                 self.socketio.emit('directory_change', {
                     'action': action,
-                    'path': dir_path,
+                    'path': dir_path.replace(os.sep, '/'),
                     'timestamp': datetime.now().isoformat()
                 }, room=f"user_{self.user_id}")
         except Exception as e:
@@ -265,6 +265,12 @@ def get_file_tree():
         if not os.path.exists(workspace_path):
             ensure_user_workspace(user_id)
             
+        # Define excluded directories
+        EXCLUDED_DIRS = {
+            'node_modules', 'venv', '.git', '.idea', '.vscode', 
+            '__pycache__', 'dist', 'build', '.next', 'coverage'
+        }
+            
         def build_tree(path, max_depth=10, current_depth=0):
             """Recursively build file tree"""
             if current_depth > max_depth:
@@ -276,8 +282,12 @@ def get_file_tree():
                     if item.startswith('.'):  # Skip hidden files
                         continue
                         
+                    if item in EXCLUDED_DIRS:  # Skip excluded directories
+                        continue
+                        
                     item_path = os.path.join(path, item)
-                    relative_path = os.path.relpath(item_path, workspace_path)
+                    # Normalize path to use forward slashes locally for consistency
+                    relative_path = os.path.relpath(item_path, workspace_path).replace('\\', '/')
                     
                     stat_info = os.stat(item_path)
                     is_dir = os.path.isdir(item_path)
@@ -676,8 +686,10 @@ def search_files():
                     if item.startswith('.'):
                         continue
                         
+                    
                     item_path = os.path.join(path, item)
-                    relative_path = os.path.relpath(item_path, workspace_path)
+                    # Normalize path to use forward slashes locally for consistency
+                    relative_path = os.path.relpath(item_path, workspace_path).replace('\\', '/')
                     
                     # Search by filename
                     if query.lower() in item.lower():

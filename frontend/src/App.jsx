@@ -127,7 +127,10 @@ const FileItem = React.memo(({ file, activeFileId, renamingId, openFile, handleC
                 style={{ padding: '4px', opacity: 0.6, width: '24px', height: '24px' }}
                 onClick={(e) => {
                     e.stopPropagation();
-                    deleteFile(file.id);
+                    if (window.confirm(`Delete file "${file.name}"?`)) {
+                        deleteFileFromBackend(file.path);
+                        deleteFile(file.id);
+                    }
                 }}
                 title="Delete File"
             >
@@ -189,11 +192,45 @@ function FileExplorer() {
     const [isFileSyncEnabled, setIsFileSyncEnabled] = useState(false);
     const fileInputRef = React.useRef(null);
     const folderInputRef = React.useRef(null);
+    const syncInitializedRef = React.useRef(false);
 
     // File Sync Integration - seamlessly sync with backend
     useEffect(() => {
+        // Clean up any duplicate files in the store
+        const currentFiles = files;
+        const seenNames = new Set();
+        const uniqueFiles = [];
+        for (const file of currentFiles) {
+            if (!seenNames.has(file.name)) {
+                seenNames.add(file.name);
+                uniqueFiles.push(file);
+            }
+        }
+        if (uniqueFiles.length !== currentFiles.length) {
+            // Remove duplicates by updating the store
+            setFiles(uniqueFiles);
+        }
+
+        if (syncInitializedRef.current) return; // Prevent multiple initializations
+        syncInitializedRef.current = true;
+
         const initFileSync = async () => {
             try {
+                // Clean up any duplicate files in the store before syncing
+                const currentFiles = files;
+                const seenNames = new Set();
+                const uniqueFiles = [];
+                for (const file of currentFiles) {
+                    if (!seenNames.has(file.name)) {
+                        seenNames.add(file.name);
+                        uniqueFiles.push(file);
+                    }
+                }
+                if (uniqueFiles.length !== currentFiles.length) {
+                    // Remove duplicates by updating the store
+                    setFiles(uniqueFiles);
+                }
+
                 // Import file sync service dynamically
                 const { fileSyncService } = await import('./services/fileSyncService');
                 const { fileSyncApi } = await import('./services/api');
@@ -441,7 +478,7 @@ function FileExplorer() {
                 </div>
             </div>
             {((files || []).filter((file, index, arr) =>
-                arr.findIndex(f => f.id === file.id) === index
+                arr.findIndex(f => f.name === file.name) === index
             )).map((file) => (
                 <FileItem
                     key={file.id}
@@ -1118,12 +1155,115 @@ function OutputPanel() {
 
 // Monaco Editor Component
 function CodeEditor({ isScribbleMode, scribbleTool = 'pen', scribbleColor = '#ff0000' }) {
-    const { files, activeFileId, updateFileContent, addHighlight, removeHighlight, updateHighlight, addDrawing, removeLastDrawing, clearDrawings } = useFileStore();
+    const { files, activeFileId, updateFileContent, addHighlight, removeHighlight, updateHighlight, addDrawing, removeLastDrawing, clearDrawings, markFileSaved } = useFileStore();
     const { showOutput } = useExecutionStore();
     const activeFile = files.find((f) => f.id === activeFileId);
     const { theme, format, features, experimental, backgroundImage, backgroundOpacity } = useSettingsStore();
+    const { addNotification } = useUIStore();
+
+    // Backend save function
+    // Backend delete function
+    // Backend directory operations
+    const createDirectoryInBackend = React.useCallback(async (dirPath) => {
+        try {
+            const { fileSyncService } = await import('./services/fileSyncService');
+            const result = await fileSyncService.createItem(dirPath, 'directory');
+            if (result.success) {
+                addNotification({ type: 'success', message: `Directory created: ${dirPath}` });
+                return true;
+            } else {
+                addNotification({ type: 'error', message: `Failed to create directory ${dirPath}: ${result.error}` });
+                return false;
+            }
+        } catch (error) {
+            addNotification({ type: 'error', message: `Failed to create directory ${dirPath}: ${error.message}` });
+            return false;
+        }
+    }, [addNotification]);
+
+    const deleteDirectoryFromBackend = React.useCallback(async (dirPath) => {
+        try {
+            const { fileSyncService } = await import('./services/fileSyncService');
+            const result = await fileSyncService.deleteItem(dirPath);
+            if (result.success) {
+                addNotification({ type: 'success', message: `Directory deleted: ${dirPath}` });
+                return true;
+            } else {
+                addNotification({ type: 'error', message: `Failed to delete directory ${dirPath}: ${result.error}` });
+                return false;
+            }
+        } catch (error) {
+            addNotification({ type: 'error', message: `Failed to delete directory ${dirPath}: ${error.message}` });
+            return false;
+        }
+    }, [addNotification]);
+
+    const deleteFileFromBackend = React.useCallback(async (filePath) => {
+        try {
+            const { fileSyncService } = await import('./services/fileSyncService');
+            const result = await fileSyncService.deleteItem(filePath);
+            if (result.success) {
+                addNotification({ type: 'success', message: `File deleted from workspace: ${filePath}` });
+                return true;
+            } else {
+                addNotification({ type: 'error', message: `Failed to delete ${filePath}: ${result.error}` });
+                return false;
+            }
+        } catch (error) {
+            addNotification({ type: 'error', message: `Failed to delete ${filePath}: ${error.message}` });
+            return false;
+        }
+    }, [addNotification]);
+
+    const saveFileToBackend = React.useCallback(async (file) => {
+        try {
+            const { fileSyncService } = await import('./services/fileSyncService');
+            const result = await fileSyncService.writeFile(
+                file.path.startsWith('/') ? file.path : `/${file.path}`,
+                file.content,
+                { encoding: 'utf-8' }
+            );
+            if (result.success) {
+                markFileSaved(file.id);
+                addNotification({ type: 'success', message: `File saved to workspace: ${file.name}` });
+                return true;
+            } else {
+                addNotification({ type: 'error', message: `Failed to save ${file.name}: ${result.error}` });
+                return false;
+            }
+        } catch (error) {
+            addNotification({ type: 'error', message: `Failed to save ${file.name}: ${error.message}` });
+            return false;
+        }
+    }, [addNotification, markFileSaved]);
+
+    // Global keyboard shortcuts
+    React.useEffect(() => {
+        const handleKeyDown = (e) => {
+            // Ctrl+S or Cmd+S - Save current file
+            if ((e.ctrlKey || e.metaKey) && e.key === 's') {
+                e.preventDefault();
+                if (activeFile) {
+                    saveFileToBackend(activeFile);
+                }
+            }
+        };
+
+        document.addEventListener('keydown', handleKeyDown);
+        return () => document.removeEventListener('keydown', handleKeyDown);
+    }, [activeFile, saveFileToBackend]);
+
+    // Cleanup auto-save timeout on unmount or file change
+    React.useEffect(() => {
+        return () => {
+            if (autoSaveTimeoutRef.current) {
+                clearTimeout(autoSaveTimeoutRef.current);
+            }
+        };
+    }, [activeFileId]);
 
     const editorRef = React.useRef(null);
+    const autoSaveTimeoutRef = React.useRef(null);
     const decorationsRef = React.useRef([]);
     const decorationIdToHighlightId = React.useRef({});
 
@@ -1329,8 +1469,17 @@ function CodeEditor({ isScribbleMode, scribbleTool = 'pen', scribbleColor = '#ff
                 language={languageMap[activeFile.language] || 'plaintext'}
                 value={activeFile.content}
                 onChange={(value) => {
-                    updateFileContent(activeFile.id, value || '');
-                    collaborationService.sendCodeChange(value || '', activeFile.id);
+                    const newContent = value || '';
+                    updateFileContent(activeFile.id, newContent);
+                    collaborationService.sendCodeChange(newContent, activeFile.id);
+
+                    // Auto-save to backend with debouncing
+                    if (autoSaveTimeoutRef.current) {
+                        clearTimeout(autoSaveTimeoutRef.current);
+                    }
+                    autoSaveTimeoutRef.current = setTimeout(() => {
+                        saveFileToBackend({ ...activeFile, content: newContent });
+                    }, 1000); // Auto-save after 1 second of inactivity
                 }}
                 theme={getMonacoTheme(theme)}
                 options={{
@@ -2767,6 +2916,7 @@ function NewFileModal() {
     const [fileName, setFileName] = useState('');
     const [language, setLanguage] = useState('javascript');
     const [isManualSelection, setIsManualSelection] = useState(false);
+    const [itemType, setItemType] = useState('file');
 
     if (!modals.newFile) return null;
 
@@ -2816,10 +2966,16 @@ function NewFileModal() {
 
     const handleCreate = () => {
         if (fileName.trim()) {
-            addFile(fileName, '', language);
+            if (itemType === 'file') {
+                addFile(fileName, '', language);
+            } else {
+                // Create directory
+                createDirectoryInBackend(fileName.startsWith('/') ? fileName : `/${fileName}`);
+            }
             setFileName('');
             setLanguage('javascript');
             setIsManualSelection(false);
+            setItemType('file');
             closeModal('newFile');
         }
     };
@@ -2828,17 +2984,28 @@ function NewFileModal() {
         <div className="modal-overlay" onClick={() => closeModal('newFile')}>
             <div className="modal" onClick={(e) => e.stopPropagation()}>
                 <div className="modal__header">
-                    <h3 className="modal__title">Create New File</h3>
+                    <h3 className="modal__title">Create New {itemType === 'file' ? 'File' : 'Directory'}</h3>
                     <button className="btn btn--ghost btn--icon" onClick={() => closeModal('newFile')}>
                         <FiX />
                     </button>
                 </div>
                 <div className="modal__body">
-                    <label className="label">File Name</label>
+                    <label className="label">Type</label>
+                    <select
+                        className="input"
+                        value={itemType}
+                        onChange={(e) => setItemType(e.target.value)}
+                        style={{ marginBottom: '16px' }}
+                    >
+                        <option value="file">File</option>
+                        <option value="directory">Directory</option>
+                    </select>
+
+                    <label className="label">Name</label>
                     <input
                         type="text"
                         className="input"
-                        placeholder="e.g., app.js, main.py"
+                        placeholder={itemType === 'file' ? "e.g., app.js, main.py" : "e.g., my-folder, src"}
                         value={fileName}
                         onChange={handleFileNameChange}
                         onKeyDown={handleKeyDown}
@@ -2846,38 +3013,43 @@ function NewFileModal() {
                         autoFocus
                     />
 
-                    <label className="label" style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                        Language
-                        <span style={{ marginLeft: 'auto' }}>{getFileIcon(language)}</span>
-                    </label>
-                    <select
-                        className="input"
-                        value={language}
-                        onChange={handleLanguageChange}
-                    >
-                        <option value="javascript">JavaScript</option>
-                        <option value="python">Python</option>
-                        <option value="java">Java</option>
-                        <option value="html">HTML</option>
-                        <option value="css">CSS</option>
-                        <option value="json">JSON</option>
-                        <option value="plaintext">Plain Text</option>
-                        <option value="c">C</option>
-                        <option value="cpp">C++</option>
-                        <option value="go">Go</option>
-                    </select>
+                    {itemType === 'file' && (
+                        <>
+                            <label className="label" style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                Language
+                                <span style={{ marginLeft: 'auto' }}>{getFileIcon(language)}</span>
+                            </label>
+                            <select
+                                className="input"
+                                value={language}
+                                onChange={handleLanguageChange}
+                            >
+                                <option value="javascript">JavaScript</option>
+                                <option value="python">Python</option>
+                                <option value="java">Java</option>
+                                <option value="html">HTML</option>
+                                <option value="css">CSS</option>
+                                <option value="json">JSON</option>
+                                <option value="plaintext">Plain Text</option>
+                                <option value="c">C</option>
+                                <option value="cpp">C++</option>
+                                <option value="go">Go</option>
+                            </select>
+                        </>
+                    )}
                 </div>
                 <div className="modal__footer">
                     <button className="btn btn--secondary" onClick={() => {
                         setFileName('');
                         setLanguage('javascript');
                         setIsManualSelection(false);
+                        setItemType('file');
                         closeModal('newFile');
                     }}>
                         Cancel
                     </button>
                     <button className="btn btn--primary" onClick={handleCreate}>
-                        <FiPlus /> Create File
+                        <FiPlus /> Create {itemType === 'file' ? 'File' : 'Directory'}
                     </button>
                 </div>
             </div>
@@ -3824,6 +3996,14 @@ function App() {
                     </button>
                     <button className="btn btn--ghost btn--icon" onClick={handleSaveAs} title="Save As">
                         <FiSave />
+                    </button>
+                    <button
+                        className="btn btn--ghost btn--icon"
+                        onClick={() => activeFile && saveFileToBackend(activeFile)}
+                        title="Save to Workspace"
+                        disabled={!activeFile || !activeFile.content}
+                    >
+                        <FiUploadCloud />
                     </button>
                     <button className="btn btn--ghost btn--icon" onClick={() => openModal('newFile')} title="New File">
                         <FiPlus />

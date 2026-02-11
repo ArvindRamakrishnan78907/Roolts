@@ -40,6 +40,23 @@ const FileExplorer = ({ onFileSelect, onFileOpen, selectedFile, className = '' }
     const searchInputRef = useRef(null);
     const refreshTimeoutRef = useRef(null);
 
+    // Clean up fileTree duplicates when it changes
+    useEffect(() => {
+        if (fileTree && Array.isArray(fileTree)) {
+            const seenPaths = new Set();
+            const uniqueTree = [];
+            for (const item of fileTree) {
+                if (!seenPaths.has(item.path)) {
+                    seenPaths.add(item.path);
+                    uniqueTree.push(item);
+                }
+            }
+            if (uniqueTree.length !== fileTree.length) {
+                setFileTree(uniqueTree);
+            }
+        }
+    }, [fileTree]);
+
     // Initialize file sync service and load initial data
     useEffect(() => {
         const initializeFileSync = async () => {
