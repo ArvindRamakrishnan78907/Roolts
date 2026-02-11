@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useMemo, Suspense, lazy } from 'react';
 import Editor from '@monaco-editor/react';
 import {
     FiFile,
@@ -74,28 +74,31 @@ import { socialService, githubService, aiService } from './services/api';
 import { notesService } from './services/notesService';
 import { executorService } from './services/executorService';
 import { terminalService } from './services/terminalService';
-import WebPreview from './components/WebPreview';
-import SnippetPanel from './components/SnippetPanel';
-import AppsPanel from './components/AppsPanel';
-import NotesApp from './components/apps/NotesApp';
-import CalculatorApp from './components/apps/CalculatorApp';
-import QuickPythonApp from './components/apps/QuickPythonApp';
 
-import SyncManager from './components/SyncManager';
-
-import RemoteControlOverlay from './components/RemoteControlOverlay';
-import ScribbleOverlay from './components/ScribbleOverlay';
-import FileSyncEnvironment from './components/FileSyncEnvironment';
+// Lazy load heavy components
+const WebPreview = lazy(() => import('./components/WebPreview'));
+const SnippetPanel = lazy(() => import('./components/SnippetPanel'));
+const AppsPanel = lazy(() => import('./components/AppsPanel'));
+const NotesApp = lazy(() => import('./components/apps/NotesApp'));
+const CalculatorApp = lazy(() => import('./components/apps/CalculatorApp'));
+const QuickPythonApp = lazy(() => import('./components/apps/QuickPythonApp'));
+const SyncManager = lazy(() => import('./components/SyncManager'));
+const RemoteControlOverlay = lazy(() => import('./components/RemoteControlOverlay'));
+const ScribbleOverlay = lazy(() => import('./components/ScribbleOverlay'));
+const FileSyncEnvironment = lazy(() => import('./components/FileSyncEnvironment'));
 
 // Memoized File Item Component
 const FileItem = React.memo(({ file, activeFileId, renamingId, openFile, handleContextMenu, handleRename, deleteFile, setRenamingId }) => {
+    // Memoize the icon to prevent recreation on every render
+    const fileIcon = useMemo(() => getFileIcon(file.language), [file.language]);
+
     return (
         <div
             className={`file-item ${activeFileId === file.id ? 'file-item--active' : ''}`}
             onClick={() => openFile(file.id)}
             onContextMenu={(e) => handleContextMenu(e, file.id)}
         >
-            <span className="file-item__icon">{getFileIcon(file.language)}</span>
+            <span className="file-item__icon">{fileIcon}</span>
 
             {renamingId === file.id ? (
                 <input
@@ -163,7 +166,7 @@ const EditorTab = React.memo(({ file, activeFileId, showOutput, setActiveFile, s
     );
 });
 
-// Helper function to get file icon
+// Memoized helper function to get file icon
 const getFileIcon = (language) => {
     const iconStyle = { width: '16px', height: '16px', objectFit: 'contain', display: 'block' };
     const largerStyle = { width: '20px', height: '20px', objectFit: 'contain', display: 'block' };
@@ -183,6 +186,18 @@ const getFileIcon = (language) => {
     return icons[language] || icons.default;
 };
 
+// Helper function to map app theme to Monaco editor theme
+const getMonacoTheme = (theme) => {
+    switch (theme) {
+        case 'dark':
+            return 'vs-dark';
+        case 'light':
+            return 'light';
+        default:
+            return 'vs-dark'; // Default to dark theme
+    }
+};
+
 // File Explorer Component
 function FileExplorer() {
     const { files, activeFileId, openFile, deleteFile, renameFile, addFile, openFiles, closeFile, closeFiles, deleteFiles } = useFileStore();
@@ -197,6 +212,18 @@ function FileExplorer() {
     const [newItemName, setNewItemName] = useState('');
     const [newItemType, setNewItemType] = useState('file'); // 'file' or 'folder'
     const [showNewItemInput, setShowNewItemInput] = useState(false);
+
+    // Memoize filtered and deduplicated files to prevent expensive filtering on every render
+    const uniqueFiles = useMemo(() => {
+        const seenNames = new Set();
+        return files.filter((file) => {
+            if (!seenNames.has(file.name)) {
+                seenNames.add(file.name);
+                return true;
+            }
+            return false;
+        });
+    }, [files]);
 
     // File Sync Integration - seamlessly sync with backend
     useEffect(() => {
@@ -662,9 +689,7 @@ function FileExplorer() {
                 </div>
             )}
 
-            {((files || []).filter((file, index, arr) =>
-                arr.findIndex(f => f.name === file.name) === index
-            )).map((file) => (
+            {uniqueFiles.map((file) => (
                 <FileItem
                     key={file.id}
                     file={file}
@@ -1647,8 +1672,7 @@ function CodeEditor({ isScribbleMode, scribbleTool = 'pen', scribbleColor = '#ff
         );
     }
 
-    const languageMap = {
-        // ... (existing map)
+    const languageMap = useMemo(() => ({
         python: 'python',
         javascript: 'javascript',
         java: 'java',
@@ -1658,16 +1682,26 @@ function CodeEditor({ isScribbleMode, scribbleTool = 'pen', scribbleColor = '#ff
         plaintext: 'plaintext',
         c: 'c',
         cpp: 'cpp'
-    };
+    }), []);
 
 
 
-    // ... (existing getMonacoTheme)
-    const getMonacoTheme = (uiTheme) => {
-        if (uiTheme === 'light' || uiTheme === 'solarized-light') return 'light';
-        if (uiTheme === 'hc-black') return 'hc-black';
-        return 'vs-dark'; // Default for dark, nord, dracula
-    };
+    // Memoize editor options for better performance
+    const editorOptions = useMemo(() => ({
+        fontFamily: format.fontFamily,
+        fontSize: format.fontSize,
+        lineHeight: format.lineHeight,
+        padding: { top: 16, bottom: 16 },
+        minimap: { enabled: features.minimap },
+        scrollBeyondLastLine: false,
+        smoothScrolling: true,
+        cursorBlinking: 'smooth',
+        cursorSmoothCaretAnimation: 'on',
+        renderWhitespace: 'selection',
+        wordWrap: format.wordWrap,
+        lineNumbers: features.lineNumbers,
+        bracketPairColorization: { enabled: true }
+    }), [format, features]);
 
     return (
         <div className="monaco-wrapper" style={{ position: 'relative' }}>
@@ -1689,21 +1723,7 @@ function CodeEditor({ isScribbleMode, scribbleTool = 'pen', scribbleColor = '#ff
                     }, 2000); // Auto-save after 2 seconds of inactivity
                 }}
                 theme={getMonacoTheme(theme)}
-                options={{
-                    fontFamily: format.fontFamily,
-                    fontSize: format.fontSize,
-                    lineHeight: format.lineHeight,
-                    padding: { top: 16, bottom: 16 },
-                    minimap: { enabled: features.minimap },
-                    scrollBeyondLastLine: false,
-                    smoothScrolling: true,
-                    cursorBlinking: 'smooth',
-                    cursorSmoothCaretAnimation: 'on',
-                    renderWhitespace: 'selection',
-                    wordWrap: format.wordWrap,
-                    lineNumbers: features.lineNumbers,
-                    bracketPairColorization: { enabled: true }
-                }}
+                options={editorOptions}
                 onMount={handleEditorDidMount}
             />
 
@@ -3870,6 +3890,12 @@ function App() {
     const [scribbleTool, setScribbleTool] = useState('pen');
     const [scribbleColor, setScribbleColor] = useState('#ff0000');
 
+    // Memoize active file to prevent unnecessary re-computations
+    const activeFile = useMemo(() => files.find(f => f.id === activeFileId), [files, activeFileId]);
+
+    // Memoize open files for performance
+    const openFiles = useMemo(() => files.filter(f => f.open), [files]);
+
     // Setup remote control listeners
     useEffect(() => {
         collaborationService.onGrantControl = () => {
@@ -3900,14 +3926,11 @@ function App() {
     const [isResizing, setIsResizing] = useState(null); // 'right' or 'terminal'
     const mainRef = React.useRef(null);
 
-    const activeFile = files.find(f => f.id === activeFileId);
-
     // Settings
     const { theme, backgroundImage, backgroundOpacity, uiFontSize, uiFontFamily } = useSettingsStore();
 
-    // Apply Theme and UI Settings
-    // Apply Theme and UI Settings
-    useEffect(() => {
+    // Apply Theme and UI Settings - Optimized with useCallback
+    const applyThemeAndSettings = useCallback(() => {
         // Remove all theme classes first
         document.body.classList.remove('theme-light', 'theme-nord', 'theme-dracula', 'theme-solarized-light');
 
@@ -3917,10 +3940,6 @@ function App() {
         else if (theme === 'dracula') document.body.classList.add('theme-dracula');
         else if (theme === 'solarized-light') document.body.classList.add('theme-solarized-light');
 
-        // Handle Monaco Theme Mapping (fallback to standard themes for now if custom not registered)
-        // ideally we would monaco.editor.defineTheme here, but for now let's leave it.
-        // The Editor component likely consumes 'theme' directly.
-
         // Apply UI Settings
         document.documentElement.style.fontSize = `${uiFontSize}px`;
         if (uiFontFamily) {
@@ -3928,31 +3947,37 @@ function App() {
         }
     }, [theme, uiFontSize, uiFontFamily]);
 
+    useEffect(() => {
+        applyThemeAndSettings();
+    }, [applyThemeAndSettings]);
+
+    // Handle resize mouse events
+    const handleMouseMove = useCallback((e) => {
+        if (!isResizing || !mainRef.current) return;
+
+        // Debounce resize operations for better performance
+        const mainRect = mainRef.current.getBoundingClientRect();
+
+        if (isResizing === 'right') {
+            const newWidth = mainRect.right - e.clientX;
+            setRightPanelWidth(Math.max(200, Math.min(800, newWidth)));
+        } else if (isResizing === 'terminal') {
+            const wrapperRect = mainRef.current.querySelector('.editor-terminal-wrapper')?.getBoundingClientRect();
+            if (wrapperRect) {
+                const newHeight = wrapperRect.bottom - e.clientY;
+                setTerminalHeight(Math.max(100, Math.min(500, newHeight)));
+            }
+        }
+    }, [isResizing]);
+
+    const handleMouseUp = useCallback(() => {
+        setIsResizing(null);
+        document.body.style.cursor = '';
+        document.body.style.userSelect = '';
+    }, []);
+
     // Handle resize mouse events
     useEffect(() => {
-        const handleMouseMove = (e) => {
-            if (!isResizing || !mainRef.current) return;
-
-            const mainRect = mainRef.current.getBoundingClientRect();
-
-            if (isResizing === 'right') {
-                const newWidth = mainRect.right - e.clientX;
-                setRightPanelWidth(Math.max(200, Math.min(800, newWidth)));
-            } else if (isResizing === 'terminal') {
-                const wrapperRect = mainRef.current.querySelector('.editor-terminal-wrapper')?.getBoundingClientRect();
-                if (wrapperRect) {
-                    const newHeight = wrapperRect.bottom - e.clientY;
-                    setTerminalHeight(Math.max(100, Math.min(500, newHeight)));
-                }
-            }
-        };
-
-        const handleMouseUp = () => {
-            setIsResizing(null);
-            document.body.style.cursor = '';
-            document.body.style.userSelect = '';
-        };
-
         if (isResizing) {
             document.body.style.cursor = isResizing === 'right' ? 'col-resize' : 'row-resize';
             document.body.style.userSelect = 'none';
@@ -3964,7 +3989,7 @@ function App() {
             document.removeEventListener('mousemove', handleMouseMove);
             document.removeEventListener('mouseup', handleMouseUp);
         };
-    }, [isResizing]);
+    }, [isResizing, handleMouseMove, handleMouseUp]);
 
     // Sync Scribble Mode with Experimental Settings
     useEffect(() => {
@@ -4369,20 +4394,31 @@ function App() {
             <DeploymentModalComponent />
 
             {/* Data Sychronization */}
-            <SyncManager />
+            <Suspense fallback={<div>Loading sync...</div>}>
+                <SyncManager />
+            </Suspense>
 
             {/* Notifications */}
             <Notifications />
 
             {/* Remote Control Overlay */}
-            <RemoteControlOverlay
-                isController={isController}
-                isBeingControlled={isBeingControlled}
-                onControlEnd={() => {
-                    setIsController(false);
-                    setIsBeingControlled(false);
-                }}
-            />
+            <Suspense fallback={<div>Loading remote control...</div>}>
+                <RemoteControlOverlay
+                    isController={isController}
+                    isBeingControlled={isBeingControlled}
+                    onControlEnd={() => {
+                        setIsController(false);
+                        setIsBeingControlled(false);
+                    }}
+                />
+            </Suspense>
+
+            {/* Scribble Overlay */}
+            {isScribbleMode && (
+                <Suspense fallback={<div>Loading scribble...</div>}>
+                    <ScribbleOverlay />
+                </Suspense>
+            )}
         </div>
     );
 }
