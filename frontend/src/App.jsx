@@ -78,7 +78,7 @@ function InputRequestModal({ isOpen, onSubmit, onCancel }) {
 function HighlightModal() {
     const [isOpen, setIsOpen] = useState(false);
     const [data, setData] = useState(null);
-    const { addHighlight, removeHighlight, files } = useFileStore();
+    const { addHighlight, activeFileId, files } = useFileStore();
 
     useEffect(() => {
         const handleOpen = (e) => { setIsOpen(true); setData(e.detail); };
@@ -91,28 +91,62 @@ function HighlightModal() {
     const handleSelectColor = (color) => {
         if (data && data.selection) {
             const highlight = { id: Date.now().toString(), color: color, range: data.selection };
-            addHighlight(data.fileId, highlight);
+            addHighlight(data.fileId || activeFileId, highlight);
         }
         setIsOpen(false);
         setData(null);
     };
 
+    const colors = [
+        { name: 'yellow', bg: '#fef3c7', text: '#92400e' },
+        { name: 'green', bg: '#d1fae5', text: '#065f46' },
+        { name: 'blue', bg: '#dbeafe', text: '#1e40af' },
+        { name: 'pink', bg: '#fce7f3', text: '#9d174d' },
+        { name: 'red', bg: '#fee2e2', text: '#991b1b' },
+        { name: 'purple', bg: '#f3e8ff', text: '#6b21a8' }
+    ];
+
     return (
         <div className="modal-overlay" onClick={() => setIsOpen(false)}>
-            <div className="modal" onClick={(e) => e.stopPropagation()} style={{ width: '300px' }}>
-                <div className="modal__header">
-                    <h3 className="modal__title">Highlight Color</h3>
+            <div className="modal highlight-modal animate-fade-in-up" onClick={(e) => e.stopPropagation()} style={{ width: '320px', padding: '24px' }}>
+                <div className="modal__header" style={{ marginBottom: '20px' }}>
+                    <h3 className="modal__title" style={{ fontSize: '1.2rem', fontWeight: 700 }}>Choose Marker</h3>
                     <button className="btn btn--ghost btn--icon" onClick={() => setIsOpen(false)}><FiX /></button>
                 </div>
-                <div className="modal__body" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
-                    {['red', 'yellow', 'green', 'blue', 'pink', 'purple'].map(c => (
-                        <button key={c} className="btn" style={{ background: `var(--highlight-${c}-bg)`, color: `var(--highlight-${c}-text)` }} onClick={() => handleSelectColor(c)}>{c}</button>
+                <div className="modal__body" style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '12px' }}>
+                    {colors.map(c => (
+                        <button
+                            key={c.name}
+                            className="color-picker-btn"
+                            style={{
+                                background: c.bg,
+                                color: c.text,
+                                border: `1px solid ${c.text}22`,
+                                padding: '16px 8px',
+                                borderRadius: '12px',
+                                fontWeight: 600,
+                                fontSize: '12px',
+                                textTransform: 'capitalize',
+                                transition: 'transform 0.2s',
+                                cursor: 'pointer'
+                            }}
+                            onClick={() => handleSelectColor(c.name)}
+                            onMouseOver={(e) => e.currentTarget.style.transform = 'scale(1.05)'}
+                            onMouseOut={(e) => e.currentTarget.style.transform = 'scale(1)'}
+                        >
+                            {c.name}
+                        </button>
                     ))}
+                </div>
+                <div style={{ marginTop: '20px', padding: '12px', background: 'rgba(255,255,255,0.03)', borderRadius: '8px', fontSize: '11px', color: 'var(--text-secondary)', textAlign: 'center' }}>
+                    <FiAlertCircle style={{ marginRight: '4px' }} />
+                    Tip: Right-click any highlighted area to remove it.
                 </div>
             </div>
         </div>
     );
 }
+
 
 function App() {
     const {
@@ -255,7 +289,7 @@ function App() {
             </header>
 
             <main className={`main ${editorMinimized ? 'main--editor-minimized' : ''}`} ref={mainRef}>
-                <aside className={`sidebar ${!sidebarOpen ? 'sidebar--collapsed' : ''}`}>
+                <aside className={`sidebar premium-sidebar ${!sidebarOpen ? 'sidebar--collapsed' : ''}`}>
                     {sidebarOpen ? (
                         <>
                             <div className="sidebar__header"><span className="sidebar__title">Explorer</span><button className="btn btn--ghost btn--icon" onClick={toggleSidebar}><FiChevronLeft /></button></div>
@@ -318,3 +352,88 @@ function App() {
 }
 
 export default App;
+
+/* Premium Sidebar Styles */
+const premiumSidebarStyles = `
+    .premium-sidebar {
+        background: rgba(255, 255, 255, 0.02) !important;
+        backdrop-filter: blur(20px);
+        border-right: 1px solid rgba(255, 255, 255, 0.05) !important;
+        display: flex;
+        flex-direction: column;
+        transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+    }
+
+    .sidebar--collapsed.premium-sidebar {
+        width: 60px;
+    }
+
+    .sidebar__header {
+        padding: 1.25rem;
+        background: transparent !important;
+        border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+    }
+
+    .sidebar__title {
+        font-size: 0.75rem;
+        font-weight: 800;
+        text-transform: uppercase;
+        letter-spacing: 1.5px;
+        color: var(--accent-primary);
+        opacity: 0.8;
+    }
+
+    .sidebar-content {
+        flex: 1;
+        overflow-y: auto;
+        padding: 0.5rem;
+    }
+
+    .sidebar-footer {
+        padding: 1rem;
+        border-top: 1px solid rgba(255, 255, 255, 0.05);
+        background: rgba(0, 0, 0, 0.1);
+    }
+
+    .sidebar-terminal-btn {
+        width: 100%;
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        padding: 10px 14px;
+        background: rgba(255, 255, 255, 0.03);
+        border: 1px solid rgba(255, 255, 255, 0.08);
+        border-radius: 10px;
+        color: var(--text-muted);
+        cursor: pointer;
+        transition: all 0.2s;
+        font-size: 0.85rem;
+    }
+
+    .sidebar-terminal-btn:hover {
+        background: rgba(99, 102, 241, 0.1);
+        color: white;
+        border-color: rgba(99, 102, 241, 0.3);
+    }
+
+    .sidebar-terminal-btn--active {
+        background: var(--accent-primary) !important;
+        color: white !important;
+        border-color: transparent !important;
+        box-shadow: 0 4px 12px rgba(99, 102, 241, 0.3);
+    }
+
+    .sidebar-collapsed-buttons {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 16px;
+        padding: 20px 0;
+    }
+`;
+
+if (typeof document !== 'undefined') {
+    const style = document.createElement('style');
+    style.textContent = premiumSidebarStyles;
+    document.head.appendChild(style);
+}

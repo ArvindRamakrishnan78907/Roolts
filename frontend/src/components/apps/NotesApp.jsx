@@ -42,7 +42,7 @@ const ProviderSelection = ({ onSelect }) => {
             description: 'Sync with your Microsoft account.',
             icon: <SiMicrosoftonedrive size={32} />,
             color: '#0078d4',
-            isConnected: onedrive.isConnected
+            isConnected: false
         },
         {
             id: 'evernote',
@@ -50,7 +50,7 @@ const ProviderSelection = ({ onSelect }) => {
             description: 'The best way to organize your life.',
             icon: <SiEvernote size={32} />,
             color: '#00a82d',
-            isConnected: evernote.isConnected
+            isConnected: false
         }
     ];
 
@@ -214,96 +214,26 @@ const NotesApp = ({ onBack, isWindowed }) => {
     // Derive active note
     const activeNote = notes.find(n => n.id === activeNoteId) || null;
 
-    // Migration Effect
-    useEffect(() => {
-        if (selectedProvider === 'roolts') {
-            const migrate = (key) => {
-                try {
-                    const oldData = localStorage.getItem(key);
-                    if (oldData) {
-                        const oldNotes = JSON.parse(oldData);
-                        if (Array.isArray(oldNotes) && oldNotes.length > 0) {
-                            const currentIds = new Set(notes.map(n => n.id));
-                            const uniqueOldNotes = oldNotes.filter(n => !currentIds.has(n.id));
-
-                            if (uniqueOldNotes.length > 0) {
-                                // We can't batch add with current store, so we add one by one or pass array if store supports it.
-                                // useNotesStore 'setNotes' replaces everything.
-                                // So we must append.
-                                // BUT strict mode might run this twice.
-                                // Ideally we use a store action 'mergeNotes'.
-                                // For now, we will just use setNotes with functional update if possible, but we don't have that exposed directly as an action that takes callback.
-                                // We have 'notes' from hook.
-                                // We need to be careful about closure staleness. 
-                                // Actually, 'setNotes' action just takes an array. 
-                                // So we can construct the new array and set it.
-                                // But 'notes' dependency might trigger loop if we are not careful.
-                                // We should only do this ONCE.
-                                // We can use a ref to track if migrated.
-                            }
-                            return uniqueOldNotes;
-                        }
-                    }
-                } catch (e) {
-                    console.error(`Migration failed for ${key}`, e);
-                }
-                return [];
-            };
-
-            const v2Notes = migrate('roolts_notes_v2');
-            const v1Notes = migrate('roolts_notes');
-
-            const allMigrated = [...v2Notes, ...v1Notes];
-
-            if (allMigrated.length > 0) {
-                // De-duplicate in case v1 and v2 have same notes
-                const uniqueMigrated = [];
-                const seenIds = new Set(notes.map(n => n.id));
-
-                for (const note of allMigrated) {
-                    if (!seenIds.has(note.id)) {
-                        uniqueMigrated.push(note);
-                        seenIds.add(note.id);
-                    }
-                }
-
-                if (uniqueMigrated.length > 0) {
-                    setNotes([...uniqueMigrated, ...notes]);
-                    console.log(`Migrated ${uniqueMigrated.length} notes.`);
-                    // Clear old storage
-                    localStorage.removeItem('roolts_notes_v2');
-                    localStorage.removeItem('roolts_notes');
-                }
-            }
-        }
-    }, [selectedProvider, setNotes]); // removed 'notes' dependency to run once per provider switch? No, we need current notes to check duplicates. But 'notes' changing triggers effect... potentially infinite loop if we add notes.
-    // Solution: Only run if migration keys exist. And after migration they are removed. So it won't run again.
-
     // Auto-save Effect
     useEffect(() => {
         const timer = setTimeout(() => {
             if (activeNote && (editorContent !== activeNote.content || editorTitle !== activeNote.title)) {
-                // Only save if there are changes
-                if (editorTitle !== activeNote.title || editorContent !== activeNote.content) {
-                    updateNote(activeNote.id, {
-                        title: editorTitle,
-                        content: editorContent
-                    });
-                }
+                updateNote(activeNote.id, {
+                    title: editorTitle,
+                    content: editorContent
+                });
             }
-        }, 1000); // 1 second debounce
+        }, 1000);
 
         return () => clearTimeout(timer);
     }, [editorContent, editorTitle, activeNote, updateNote]);
-    // State moved to top
 
-    // Quill modules with image resize and history
+    // Quill modules
     const modules = useMemo(() => ({
         toolbar: {
             container: [
-                [{ 'font': ['arial', 'comic-sans', 'courier-new', 'georgia', 'helvetica', 'lucida', 'times-new-roman', 'verdana'] }],
+                [{ 'font': [] }],
                 [{ 'size': ['small', false, 'large', 'huge'] }],
-                [{ 'header': [1, 2, false] }],
                 ['bold', 'italic', 'underline'],
                 [{ 'color': [] }, { 'background': [] }],
                 [{ 'list': 'ordered' }, { 'list': 'bullet' }],
@@ -313,30 +243,7 @@ const NotesApp = ({ onBack, isWindowed }) => {
             ]
         },
         imageResize: {
-            parchment: (() => {
-                try {
-                    return Quill.import('parchment');
-                } catch (e) {
-                    console.error('Failed to import parchment for Quill:', e);
-                    return null;
-                }
-            })(),
             modules: ['Resize', 'DisplaySize']
-        },
-        keyboard: {
-            bindings: {
-                // Ensure delete/backspace works for selected content (including images)
-                deleteSelected: {
-                    key: ['Backspace', 'Delete'],
-                    handler: function (range, context) {
-                        if (range.length > 0) {
-                            this.quill.deleteText(range.index, range.length);
-                            return false;
-                        }
-                        return true;
-                    }
-                }
-            }
         },
         history: {
             delay: 1000,
@@ -345,9 +252,8 @@ const NotesApp = ({ onBack, isWindowed }) => {
         }
     }), []);
 
-    const formats = ['font', 'size', 'header', 'bold', 'italic', 'underline', 'color', 'background', 'list', 'bullet', 'link', 'image', 'video', 'align', 'width', 'height', 'style'];
+    const formats = ['font', 'size', 'header', 'bold', 'italic', 'underline', 'color', 'background', 'list', 'bullet', 'link', 'image', 'video', 'align'];
 
-    // Helper function for keyboard accessibility on buttons
     const handleButtonKeyDown = (e, callback) => {
         if (e.key === 'Enter' || e.key === ' ') {
             e.preventDefault();
@@ -355,48 +261,11 @@ const NotesApp = ({ onBack, isWindowed }) => {
         }
     };
 
-    // Old useEffect for loading notes removed. Store handles persistence.
-
-    const handleConnectOneDrive = async () => {
-        try {
-            // Social service removed
-            if (response.data.auth_url) {
-                window.location.href = response.data.auth_url;
-            }
-        } catch (error) {
-            addNotification({ type: 'error', message: 'Failed to connect to OneDrive' });
-        }
-    };
-
-    const handleConnectEvernote = async () => {
-        try {
-            // Social service removed
-            if (response.data.auth_url) {
-                window.location.href = response.data.auth_url;
-            }
-        } catch (error) {
-            addNotification({ type: 'error', message: 'Failed to connect to Evernote' });
-        }
-    };
-
     const handleProviderSelect = (providerId) => {
-        if (providerId === 'onedrive' && !onedrive.isConnected) {
-            handleConnectOneDrive();
-            return;
-        }
-        if (providerId === 'evernote' && !evernote.isConnected) {
-            handleConnectEvernote();
-            return;
-        }
         setProvider(providerId);
     };
 
     const handleDisconnect = () => {
-        if (selectedProvider === 'roolts') {
-            setProvider(null);
-            return;
-        }
-        // Other providers removed
         setProvider(null);
     };
 
@@ -410,67 +279,78 @@ const NotesApp = ({ onBack, isWindowed }) => {
         }
     }, [activeNote]);
 
-    // Track selection changes to enable/disable delete button for media
-    useEffect(() => {
+    const saveNote = () => {
+        if (!activeNote) return;
+        updateNote(activeNote.id, {
+            title: editorTitle,
+            content: editorContent
+        });
+    };
+
+    const createNote = () => {
+        const newNote = {
+            id: uuidv4(),
+            title: 'New Note',
+            content: '',
+            createdAt: new Date().toISOString(),
+            updatedAt: new Date().toISOString()
+        };
+        addNote(newNote);
+        setShowList(false);
+    };
+
+    const deleteNote = () => {
+        if (!activeNote || !window.confirm('Delete this note?')) return;
+        deleteNoteAction(activeNote.id);
+    };
+
+    const deleteSelectedMedia = () => {
         const quill = quillRef.current?.getEditor();
         if (!quill) return;
-
-        const handler = (range, oldRange, source) => {
-            if (!range) {
-                setSelectedImage(null);
-                return;
-            }
-
-            // Check if selection is an image or video
-            try {
-                const formats = quill.getFormat(range);
-                if (formats.image || formats.video) {
-                    setSelectedImage(range);
-                    return;
-                }
-
-                // Fallback: check if the node at selection is media
-                if (range.length === 0) {
-                    const [leaf, offset] = quill.getLeaf(range.index);
-                    if (leaf && leaf.domNode && (leaf.domNode.tagName === 'IMG' || leaf.domNode.tagName === 'VIDEO')) {
-                        setSelectedImage({ index: range.index, length: 1 });
-                        return;
-                    }
-                }
-            } catch (e) {
-                // Ignore
-            }
+        const range = selectedImage || quill.getSelection();
+        if (range) {
+            quill.deleteText(range.index, Math.max(1, range.length));
             setSelectedImage(null);
-        };
+            quill.focus();
+        }
+    };
 
-        // Also listen for clicks directly on images/videos
-        const handleClick = (e) => {
-            const target = e.target;
-            if (target.tagName === 'IMG' || target.tagName === 'VIDEO') {
-                try {
-                    const blot = Quill.find(target);
-                    if (blot) {
-                        const index = quill.getIndex(blot);
-                        const range = { index, length: 1 };
-                        setSelectedImage(range);
-                        // Set selection to highlight the image
-                        setTimeout(() => quill.setSelection(index, 1), 0);
-                    }
-                } catch (e) {
-                    console.error('Error selecting image:', e);
-                }
+    const fileToBase64 = (file) => {
+        return new Promise((resolve) => {
+            const reader = new FileReader();
+            reader.onload = () => resolve(reader.result);
+            reader.readAsDataURL(file);
+        });
+    };
+
+    const insertImage = async (file) => {
+        const base64 = await fileToBase64(file);
+        const quill = quillRef.current?.getEditor();
+        if (quill) {
+            const range = quill.getSelection(true);
+            quill.insertEmbed(range.index, 'image', base64);
+        }
+    };
+
+    const handleImage = () => {
+        const input = document.createElement('input');
+        input.type = 'file';
+        input.accept = 'image/*';
+        input.onchange = (e) => e.target.files[0] && insertImage(e.target.files[0]);
+        input.click();
+    };
+
+    const handleVideo = () => {
+        const input = document.createElement('input');
+        input.type = 'file';
+        input.accept = 'video/*';
+        input.onchange = (e) => {
+            if (e.target.files[0]) {
+                alert('Video support simplified in this version.');
             }
         };
-
-        const editorElement = quill.root;
-        editorElement.addEventListener('click', handleClick);
-        quill.on('selection-change', handler);
-
-        return () => {
-            editorElement.removeEventListener('click', handleClick);
-            quill.off('selection-change', handler);
-        };
-    }, [quillRef.current]);
+        input.click();
+    };
 
     if (!selectedProvider) {
         return (
@@ -488,325 +368,13 @@ const NotesApp = ({ onBack, isWindowed }) => {
         );
     }
 
-    if (selectedProvider !== 'roolts') {
-        const currentUser = selectedProvider === 'onedrive' ? onedrive.user : evernote.user;
-        return (
-            <div style={{ display: 'flex', flexDirection: 'column', height: '100%', background: 'var(--bg-primary)', color: 'var(--text-primary)' }}>
-                <div style={{ display: 'flex', alignItems: 'center', padding: '8px 12px', borderBottom: '1px solid var(--border-color)' }}>
-                    {!isWindowed && onBack && (
-                        <button onClick={onBack} className="btn btn--ghost btn--icon"><FiChevronLeft /></button>
-                    )}
-                    <span style={{ fontWeight: 600, marginLeft: '8px' }}>{selectedProvider === 'onedrive' ? 'OneDrive' : 'Evernote'} Notes</span>
-                </div>
-                <div style={{ flex: 1, overflowY: 'auto' }}>
-                    <RemoteNotesView
-                        provider={selectedProvider}
-                        user={currentUser}
-                        onDisconnect={handleDisconnect}
-                    />
-                </div>
-            </div>
-        );
-    }
-
-    const saveNote = () => {
-        if (!activeNote) return;
-        updateNote(activeNote.id, {
-            title: editorTitle,
-            content: editorContent
-        });
-    };
-
-    const createNote = () => {
-        const newNote = {
-            id: uuidv4(),
-            title: 'New Note',
-            content: '',
-            createdAt: new Date().toISOString(),
-            updatedAt: new Date().toISOString(),
-            pinned: false,
-            tags: [],
-            color: 'default'
-        };
-        addNote(newNote);
-        setShowList(false);
-    };
-
-    const deleteNote = () => {
-        if (!activeNote || !window.confirm('Delete this note?')) return;
-        deleteNoteAction(activeNote.id);
-    };
-
-    const deleteSelectedMedia = () => {
-        const quill = quillRef.current?.getEditor();
-        if (!quill) return;
-
-        const range = selectedImage || quill.getSelection();
-        if (range) {
-            quill.deleteText(range.index, Math.max(1, range.length));
-            setSelectedImage(null);
-            quill.focus();
-        }
-    };
-
-    // Convert file to base64 data URL
-    const fileToBase64 = (file) => {
-        return new Promise((resolve, reject) => {
-            const reader = new FileReader();
-            reader.onload = () => resolve(reader.result);
-            reader.onerror = reject;
-            reader.readAsDataURL(file);
-        });
-    };
-
-    const insertImage = async (file) => {
-        try {
-            const base64 = await fileToBase64(file);
-            const quill = quillRef.current?.getEditor();
-            if (quill) {
-                const range = quill.getSelection(true) || { index: quill.getLength() };
-                quill.insertEmbed(range.index, 'image', base64);
-                quill.setSelection(range.index + 1);
-                setTimeout(() => {
-                    const content = quill.root.innerHTML;
-                    setEditorContent(content);
-                    if (activeNote) {
-                        updateNote(activeNote.id, { content, updatedAt: new Date().toISOString() });
-                    }
-                }, 100);
-            }
-        } catch (err) {
-            console.error('Failed to insert image:', err);
-            alert('Failed to insert image');
-        }
-    };
-
-    const insertVideo = async (file) => {
-        try {
-            const base64 = await fileToBase64(file);
-            const quill = quillRef.current?.getEditor();
-            if (quill) {
-                const range = quill.getSelection(true) || { index: quill.getLength() };
-                const videoHtml = `<video controls style="max-width: 100%; height: auto; border-radius: 4px;"><source src="${base64}" type="${file.type}"></video>`;
-                quill.clipboard.dangerouslyPasteHTML(range.index, videoHtml);
-                setTimeout(() => {
-                    const content = quill.root.innerHTML;
-                    setEditorContent(content);
-                    if (activeNote) {
-                        updateNote(activeNote.id, { content, updatedAt: new Date().toISOString() });
-                    }
-                }, 100);
-            }
-        } catch (err) {
-            console.error('Failed to insert video:', err);
-            alert('Failed to insert video. Video may be too large.');
-        }
-    };
-
-    const handleImage = () => {
-        const input = document.createElement('input');
-        input.type = 'file';
-        input.accept = 'image/*';
-        input.onchange = (e) => e.target.files[0] && insertImage(e.target.files[0]);
-        input.click();
-    };
-
-    const handleVideo = () => {
-        const input = document.createElement('input');
-        input.type = 'file';
-        input.accept = 'video/*';
-        input.onchange = (e) => e.target.files[0] && insertVideo(e.target.files[0]);
-        input.click();
-    };
-
-    const captureSnapshot = async () => {
-        const src = webcamRef.current?.getScreenshot();
-        if (src) {
-            const quill = quillRef.current?.getEditor();
-            if (quill) {
-                const range = quill.getSelection(true) || { index: quill.getLength() };
-                quill.insertEmbed(range.index, 'image', src);
-                quill.setSelection(range.index + 1);
-                setTimeout(() => {
-                    const content = quill.root.innerHTML;
-                    setEditorContent(content);
-                    if (activeNote) {
-                        updateNote(activeNote.id, { content, updatedAt: new Date().toISOString() });
-                    }
-                }, 100);
-            }
-            setShowCamera(false);
-        }
-    };
-
-    const exportAsPDF = async () => {
-        if (!activeNote) return;
-
-        const element = document.createElement('div');
-        element.innerHTML = `<h1 style="margin-bottom: 20px;">${editorTitle}</h1>${editorContent}`;
-        element.style.cssText = 'padding: 30px; font-family: Arial, sans-serif; max-width: 800px; background: white; color: black;';
-
-        element.querySelectorAll('img').forEach(img => {
-            img.style.cssText = 'max-width: 100%; height: auto; display: block; margin: 10px 0;';
-            img.crossOrigin = 'anonymous';
-        });
-
-        // Remove video elements (can't appear in PDF)
-        element.querySelectorAll('video').forEach(video => {
-            const placeholder = document.createElement('div');
-            placeholder.style.cssText = 'padding: 20px; background: #f0f0f0; border: 1px solid #ccc; text-align: center; margin: 10px 0; border-radius: 4px;';
-            placeholder.textContent = '[Video content - not available in PDF]';
-            video.replaceWith(placeholder);
-        });
-
-        document.body.appendChild(element);
-
-        try {
-            // Wait for all images to load
-            const images = element.querySelectorAll('img');
-            await Promise.all(Array.from(images).map(img => {
-                if (img.complete) return Promise.resolve();
-                return new Promise((resolve) => {
-                    img.onload = resolve;
-                    img.onerror = resolve;
-                });
-            }));
-
-            const canvas = await html2canvas(element, {
-                scale: 2,
-                useCORS: true,
-                allowTaint: true,
-                backgroundColor: '#ffffff',
-                logging: false
-            });
-            const imgData = canvas.toDataURL('image/png');
-            const pdf = new jsPDF('p', 'mm', 'a4');
-            const imgWidth = 210;
-            const pageHeight = 297;
-            const imgHeight = (canvas.height * imgWidth) / canvas.width;
-
-            let heightLeft = imgHeight;
-            let position = 0;
-
-            pdf.addImage(imgData, 'PNG', 0, position, imgWidth, imgHeight);
-            heightLeft -= pageHeight;
-
-            // Add extra pages if needed
-            while (heightLeft > 0) {
-                position = heightLeft - imgHeight;
-                pdf.addPage();
-                pdf.addImage(imgData, 'PNG', 0, position, imgWidth, imgHeight);
-                heightLeft -= pageHeight;
-            }
-
-            pdf.save(`${editorTitle || 'note'}.pdf`);
-        } catch (err) {
-            console.error('PDF export error:', err);
-            alert('Export failed. Please try again.');
-        } finally {
-            document.body.removeChild(element);
-            setShowExportMenu(false);
-        }
-    };
-
-    const exportAsWord = () => {
-        if (!activeNote) return;
-
-        // Process content to handle videos (can't be embedded in Word)
-        let processedContent = editorContent;
-
-        // Replace video elements with placeholder text
-        const tempDiv = document.createElement('div');
-        tempDiv.innerHTML = processedContent;
-        tempDiv.querySelectorAll('video').forEach(video => {
-            const placeholder = document.createElement('p');
-            placeholder.style.cssText = 'padding: 15px; background: #f5f5f5; border: 1px dashed #999; text-align: center; color: #666; font-style: italic;';
-            placeholder.textContent = '[Video content - view in Notes app]';
-            video.replaceWith(placeholder);
-        });
-        processedContent = tempDiv.innerHTML;
-
-        const htmlContent = `<!DOCTYPE html>
-<html xmlns:v="urn:schemas-microsoft-com:vml" xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:w="urn:schemas-microsoft-com:office:word" xmlns="http://www.w3.org/TR/REC-html40">
-<head>
-<meta charset="utf-8">
-<meta name="ProgId" content="Word.Document">
-<meta name="Generator" content="Roolts Notes">
-<title>${editorTitle}</title>
-<!--[if gte mso 9]>
-<xml>
-<w:WordDocument>
-<w:View>Print</w:View>
-</w:WordDocument>
-</xml>
-<![endif]-->
-<style>
-@page { size: A4; margin: 2cm; }
-body { font-family: 'Calibri', Arial, sans-serif; font-size: 11pt; line-height: 1.5; }
-h1 { font-size: 18pt; margin-bottom: 12pt; color: #333; }
-img { max-width: 100%; height: auto; display: block; margin: 12pt 0; }
-p { margin: 0 0 6pt 0; }
-</style>
-</head>
-<body>
-<h1>${editorTitle}</h1>
-${processedContent}
-</body>
-</html>`;
-
-        const blob = new Blob(['\ufeff', htmlContent], { type: 'application/msword' });
-        saveAs(blob, `${editorTitle || 'note'}.doc`);
-        setShowExportMenu(false);
-    };
-
-    const importFile = () => {
-        const input = document.createElement('input');
-        input.type = 'file';
-        input.accept = '.html,.htm,.doc,.txt';
-        input.onchange = async (e) => {
-            const file = e.target.files[0];
-            if (!file) return;
-
-            try {
-                const text = await file.text();
-                const parser = new DOMParser();
-                const doc = parser.parseFromString(text, 'text/html');
-
-                const titleEl = doc.querySelector('h1') || doc.querySelector('title');
-                const title = titleEl ? titleEl.textContent : file.name.replace(/\.[^/.]+$/, '');
-
-                if (titleEl && titleEl.tagName === 'H1') titleEl.remove();
-
-                const newNote = {
-                    id: uuidv4(),
-                    title: title,
-                    content: doc.body.innerHTML,
-                    createdAt: new Date().toISOString(),
-                    updatedAt: new Date().toISOString(),
-                    pinned: false,
-                    tags: [],
-                    color: 'default'
-                };
-
-                addNote(newNote);
-                setShowExportMenu(false);
-                alert('File imported successfully!');
-            } catch (err) {
-                console.error(err);
-                alert('Failed to import file');
-            }
-        };
-        input.click();
-    };
-
     return (
         <div style={{ display: 'flex', flexDirection: 'column', height: '100%', background: 'var(--bg-primary)', color: 'var(--text-primary)' }}>
-            {/* Header */}
             <div style={{ display: 'flex', alignItems: 'center', padding: '8px 12px', borderBottom: '1px solid var(--border-color)', gap: '8px' }}>
                 {!isWindowed && onBack && (
-                    <button onClick={onBack} onKeyDown={(e) => handleButtonKeyDown(e, onBack)} className="btn btn--ghost btn--icon" title="Back"><FiChevronLeft /></button>
+                    <button onClick={onBack} className="btn btn--ghost btn--icon"><FiChevronLeft /></button>
                 )}
-                <button onClick={() => setShowList(!showList)} onKeyDown={(e) => handleButtonKeyDown(e, () => setShowList(!showList))} className="btn btn--ghost btn--icon" title="Notes List"><FiList /></button>
+                <button onClick={() => setShowList(!showList)} className="btn btn--ghost btn--icon"><FiList /></button>
                 <input
                     type="text"
                     value={editorTitle}
@@ -815,50 +383,11 @@ ${processedContent}
                     placeholder="Note title..."
                     style={{ flex: 1, border: 'none', background: 'transparent', fontSize: '15px', fontWeight: 600, outline: 'none', color: 'inherit' }}
                 />
-                <button onClick={() => quillRef.current?.getEditor()?.history?.undo()} onKeyDown={(e) => handleButtonKeyDown(e, () => quillRef.current?.getEditor()?.history?.undo())} className="btn btn--ghost btn--icon" title="Undo (Ctrl+Z)">↶</button>
-                <button onClick={() => quillRef.current?.getEditor()?.history?.redo()} onKeyDown={(e) => handleButtonKeyDown(e, () => quillRef.current?.getEditor()?.history?.redo())} className="btn btn--ghost btn--icon" title="Redo (Ctrl+Y)">↷</button>
-                <div style={{ width: '1px', height: '20px', background: 'var(--border-color)', margin: '0 4px' }}></div>
-                <button onClick={handleImage} onKeyDown={(e) => handleButtonKeyDown(e, handleImage)} className="btn btn--ghost btn--icon" title="Add Image"><FiImage /></button>
-                <button onClick={() => setShowCamera(true)} onKeyDown={(e) => handleButtonKeyDown(e, () => setShowCamera(true))} className="btn btn--ghost btn--icon" title="Camera"><FiCamera /></button>
-                <button onClick={handleVideo} onKeyDown={(e) => handleButtonKeyDown(e, handleVideo)} className="btn btn--ghost btn--icon" title="Add Video"><FiVideo /></button>
-                <button
-                    onMouseDown={(e) => e.preventDefault()}
-                    onClick={deleteSelectedMedia}
-                    className="btn btn--ghost btn--icon"
-                    title="Delete Selected Image/Video (or press Backspace)"
-                    disabled={!selectedImage}
-                    style={{
-                        color: selectedImage ? 'var(--error)' : 'var(--text-muted)',
-                        cursor: selectedImage ? 'pointer' : 'not-allowed',
-                        opacity: selectedImage ? 1 : 0.5,
-                        marginLeft: '4px'
-                    }}
-                >
-                    <FiTrash2 />
-                </button>
-                <div style={{ position: 'relative' }}>
-                    <button onClick={() => setShowExportMenu(!showExportMenu)} onKeyDown={(e) => handleButtonKeyDown(e, () => setShowExportMenu(!showExportMenu))} className="btn btn--ghost btn--icon" title="Export/Import"><FiDownload /></button>
-                    {showExportMenu && (
-                        <div style={{ position: 'absolute', top: '100%', right: 0, marginTop: '4px', background: 'var(--bg-secondary)', border: '1px solid var(--border-color)', borderRadius: '6px', boxShadow: '0 2px 8px rgba(0,0,0,0.15)', zIndex: 100, minWidth: '140px' }}>
-                            <button onClick={exportAsPDF} onKeyDown={(e) => handleButtonKeyDown(e, exportAsPDF)} style={{ width: '100%', padding: '8px 12px', border: 'none', background: 'transparent', color: 'inherit', textAlign: 'left', cursor: 'pointer', fontSize: '13px' }}>
-                                📄 Export as PDF
-                            </button>
-                            <button onClick={exportAsWord} onKeyDown={(e) => handleButtonKeyDown(e, exportAsWord)} style={{ width: '100%', padding: '8px 12px', border: 'none', background: 'transparent', color: 'inherit', textAlign: 'left', cursor: 'pointer', fontSize: '13px' }}>
-                                📝 Export as Word
-                            </button>
-                            <div style={{ height: '1px', background: 'var(--border-color)', margin: '4px 0' }}></div>
-                            <button onClick={importFile} onKeyDown={(e) => handleButtonKeyDown(e, importFile)} style={{ width: '100%', padding: '8px 12px', border: 'none', background: 'transparent', color: 'inherit', textAlign: 'left', cursor: 'pointer', fontSize: '13px' }}>
-                                📂 Import File
-                            </button>
-                        </div>
-                    )}
-                </div>
-                <button onClick={createNote} onKeyDown={(e) => handleButtonKeyDown(e, createNote)} className="btn btn--ghost btn--icon" title="New Note"><FiPlus /></button>
-                <button onClick={deleteNote} onKeyDown={(e) => handleButtonKeyDown(e, deleteNote)} className="btn btn--ghost btn--icon" title="Delete" style={{ color: 'var(--warning)' }}><FiTrash2 /></button>
-                <div style={{ width: '1px', height: '20px', background: 'var(--border-color)', margin: '0 4px' }}></div>
+                <button onClick={handleImage} className="btn btn--ghost btn--icon"><FiImage /></button>
+                <button onClick={createNote} className="btn btn--ghost btn--icon"><FiPlus /></button>
+                <button onClick={deleteNote} className="btn btn--ghost btn--icon" style={{ color: 'var(--warning)' }}><FiTrash2 /></button>
             </div>
 
-            {/* Notes List */}
             {showList && (
                 <div style={{ position: 'absolute', top: '48px', left: 0, bottom: 0, width: '220px', background: 'var(--bg-secondary)', borderRight: '1px solid var(--border-color)', zIndex: 100, overflowY: 'auto' }}>
                     {notes.map(note => (
@@ -867,19 +396,12 @@ ${processedContent}
                             onClick={() => { setActiveNote(note); setShowList(false); }}
                             style={{ padding: '12px', cursor: 'pointer', fontSize: '13px', borderBottom: '1px solid var(--border-color)', background: activeNote?.id === note.id ? 'var(--bg-tertiary)' : 'transparent' }}
                         >
-                            <div style={{ fontWeight: 500, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                                {note.title || 'Untitled'}
-                            </div>
-                            <div style={{ fontSize: '11px', color: 'var(--text-muted)', marginTop: '4px' }}>
-                                {new Date(note.updatedAt).toLocaleDateString()}
-                            </div>
+                            <div style={{ fontWeight: 500 }}>{note.title || 'Untitled'}</div>
                         </div>
                     ))}
-                    {notes.length === 0 && <div style={{ padding: '20px', textAlign: 'center', color: 'var(--text-muted)' }}>No notes yet</div>}
                 </div>
             )}
 
-            {/* Editor */}
             <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
                 {activeNote ? (
                     <ReactQuill
@@ -891,114 +413,13 @@ ${processedContent}
                         modules={modules}
                         formats={formats}
                         style={{ flex: 1, display: 'flex', flexDirection: 'column' }}
-                        className="simple-notes-editor"
                     />
                 ) : (
-                    <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', flexDirection: 'column', color: 'var(--text-muted)' }}>
-                        <div style={{ fontSize: '48px', marginBottom: '16px', opacity: 0.3 }}>📝</div>
-                        <p style={{ marginBottom: '16px' }}>No notes yet</p>
-                        <button onClick={createNote} onKeyDown={(e) => handleButtonKeyDown(e, createNote)} className="btn btn--primary"><FiPlus /> Create Note</button>
+                    <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--text-muted)' }}>
+                        Select or create a note
                     </div>
                 )}
             </div>
-
-            {/* Camera Modal */}
-            {showCamera && (
-                <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.85)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                    <div style={{ background: 'var(--bg-primary)', padding: '20px', borderRadius: '12px', width: '90%', maxWidth: '500px' }}>
-                        <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '16px' }}>
-                            <span style={{ fontWeight: 600, fontSize: '16px' }}>Take Photo</span>
-                            <button onClick={() => setShowCamera(false)} onKeyDown={(e) => handleButtonKeyDown(e, () => setShowCamera(false))} className="btn btn--ghost btn--icon"><FiX /></button>
-                        </div>
-                        <Webcam audio={false} ref={webcamRef} screenshotFormat="image/jpeg" style={{ width: '100%', borderRadius: '8px' }} />
-                        <button onClick={captureSnapshot} onKeyDown={(e) => handleButtonKeyDown(e, captureSnapshot)} className="btn btn--primary" style={{ width: '100%', marginTop: '16px', padding: '12px' }}>
-                            <FiCamera style={{ marginRight: '8px' }} /> Capture
-                        </button>
-                    </div>
-                </div>
-            )}
-
-            <style>{`
-                .simple-notes-editor .ql-container { flex: 1; border: none !important; font-size: 15px; }
-                .simple-notes-editor .ql-toolbar { border: none !important; border-bottom: 1px solid var(--border-color) !important; padding: 8px !important; }
-                .simple-notes-editor .ql-editor { padding: 20px; min-height: 100%; line-height: 1.6; }
-                .simple-notes-editor .ql-toolbar button { color: var(--text-secondary) !important; }
-                .simple-notes-editor .ql-toolbar .ql-stroke { stroke: var(--text-secondary) !important; }
-                .simple-notes-editor .ql-toolbar .ql-fill { fill: var(--text-secondary) !important; }
-                .simple-notes-editor .ql-toolbar .ql-picker { color: var(--text-secondary) !important; }
-                
-                /* Font families */
-                .ql-font-arial { font-family: Arial, sans-serif; }
-                .ql-font-comic-sans { font-family: 'Comic Sans MS', cursive; }
-                .ql-font-courier-new { font-family: 'Courier New', monospace; }
-                .ql-font-georgia { font-family: Georgia, serif; }
-                .ql-font-helvetica { font-family: Helvetica, sans-serif; }
-                .ql-font-lucida { font-family: 'Lucida Sans Unicode', sans-serif; }
-                .ql-font-times-new-roman { font-family: 'Times New Roman', serif; }
-                .ql-font-verdana { font-family: Verdana, sans-serif; }
-                
-                /* Font sizes */
-                .ql-size-small { font-size: 0.75em; }
-                .ql-size-large { font-size: 1.5em; }
-                .ql-size-huge { font-size: 2em; }
-                
-                .simple-notes-editor .ql-editor img {
-                    max-width: 100%;
-                    height: auto;
-                    display: block;
-                    margin: 12px 0;
-                    border-radius: 6px;
-                    box-shadow: 0 2px 8px rgba(0,0,0,0.1);
-                    cursor: default;
-                }
-                
-                .simple-notes-editor .ql-editor img.ql-align-center {
-                    margin-left: auto;
-                    margin-right: auto;
-                }
-                
-                .simple-notes-editor .ql-editor img.ql-align-right {
-                    margin-left: auto;
-                    margin-right: 0;
-                }
-                
-                .simple-notes-editor .ql-editor img:hover {
-                    outline: 2px solid var(--accent-primary);
-                }
-                
-                .simple-notes-editor .ql-editor video {
-                    max-width: 100%;
-                    height: auto;
-                    display: block;
-                    margin: 12px 0;
-                    border-radius: 6px;
-                }
-
-                /* Image resize handles */
-                .ql-editor img.resizing {
-                    outline: 2px dashed var(--accent-primary);
-                }
-                
-                /* Alignment classes */
-                .simple-notes-editor .ql-editor .ql-align-center {
-                    text-align: center;
-                }
-                .simple-notes-editor .ql-editor .ql-align-right {
-                    text-align: right;
-                }
-                .simple-notes-editor .ql-editor .ql-align-left {
-                    text-align: left;
-                }
-                .simple-notes-editor .ql-editor .ql-align-justify {
-                    text-align: justify;
-                }
-                
-                /* Improve click targets */
-                .simple-notes-editor .ql-editor p {
-                    min-height: 1.5em;
-                    cursor: text;
-                }
-            `}</style>
         </div>
     );
 };

@@ -1,12 +1,10 @@
 import React, { useRef, useState, useEffect } from 'react';
-import { FiEdit2, FiTrash2, FiRotateCcw, FiX, FiCheck } from 'react-icons/fi';
-import './ScribbleOverlay.css'; // We'll need to create this or add to index.css
+import './ScribbleOverlay.css';
 
 const ScribbleOverlay = ({ fileId, drawings = [], onAddDrawing, onUndo, onClear, isActive, tool, color, penSize = 3, eraserSize = 15, editor }) => {
     const canvasRef = useRef(null);
     const [isDrawing, setIsDrawing] = useState(false);
     const [currentPath, setCurrentPath] = useState([]);
-    const [lineRange, setLineRange] = useState({ min: Infinity, max: -Infinity });
     const [context, setContext] = useState(null);
 
     const lineWidth = tool === 'eraser' ? eraserSize : penSize;
@@ -21,15 +19,6 @@ const ScribbleOverlay = ({ fileId, drawings = [], onAddDrawing, onUndo, onClear,
         }
     }, []);
 
-    // Listen to editor scroll to redraw
-    useEffect(() => {
-        if (!editor) return;
-        const disposable = editor.onDidScrollChange(() => {
-            redraw();
-        });
-        return () => disposable.dispose();
-    }, [editor, drawings, context]);
-
     // Resize canvas to match parent
     useEffect(() => {
         const handleResize = () => {
@@ -39,19 +28,37 @@ const ScribbleOverlay = ({ fileId, drawings = [], onAddDrawing, onUndo, onClear,
                 redraw();
             }
         };
-
         window.addEventListener('resize', handleResize);
         handleResize();
-
         return () => window.removeEventListener('resize', handleResize);
     }, [drawings, context]);
 
-    const getScreenY = (line, relY) => {
+    // Redraw on state changes or scroll
+    useEffect(() => {
+        if (!editor || !context) return;
+
+        let requestRef;
+        const throttledRedraw = () => {
+            if (requestRef) cancelAnimationFrame(requestRef);
+            requestRef = requestAnimationFrame(redraw);
+        };
+
+        // Redraw immediately for state changes
+        redraw();
+
+        const disposable = editor.onDidScrollChange(throttledRedraw);
+        return () => {
+            disposable.dispose();
+            if (requestRef) cancelAnimationFrame(requestRef);
+        };
+    }, [editor, drawings, context, currentPath, isDrawing]);
+
+    const getScreenY = (initialLine, relY) => {
         if (!editor) return relY;
-        // getTopForLineNumber returns pixels from top of model
-        const top = editor.getTopForLineNumber(line);
+        const top = editor.getTopForLineNumber(initialLine);
         const scrollTop = editor.getScrollTop();
-        return (top + relY) - scrollTop + 16; // +16 for editor padding top
+        // The +16 corresponds to the editor's paddingTop.
+        return (top + relY) - scrollTop + 16;
     };
 
     const redraw = () => {
@@ -63,51 +70,40 @@ const ScribbleOverlay = ({ fileId, drawings = [], onAddDrawing, onUndo, onClear,
 
         // Draw saved drawings
         drawings.forEach(drawing => {
-            renderPath(drawing.points, drawing.initialLine, drawing.minLine, drawing.maxLine, drawing.tool, drawing.color, drawing.width);
+            renderPath(drawing.points, drawing.initialLine, drawing.tool, drawing.color, drawing.width);
         });
 
         // Draw current active path
         if (isDrawing && currentPath.length > 1) {
-            const initialLine = currentPath[0].line;
-            renderPath(currentPath, initialLine, lineRange.min, lineRange.max, tool, color, lineWidth);
+            renderPath(currentPath, currentPath[0].line, tool, color, lineWidth);
         }
 
         ctx.globalCompositeOperation = 'source-over';
     };
 
-    const renderPath = (points, initialLine, minL, maxL, pTool, pColor, pWidth) => {
+    const renderPath = (points, initialLine, pTool, pColor, pWidth) => {
         if (points.length < 2 || !context || !editor) return;
         const ctx = context;
-        const canvas = canvasRef.current;
-
-        // Clip to line range
-        const topBoundary = editor.getTopForLineNumber(minL);
-        const bottomBoundary = editor.getTopForLineNumber(maxL + 1);
-        const scrollTop = editor.getScrollTop();
 
         ctx.save();
-        ctx.beginPath();
-        ctx.rect(0, topBoundary - scrollTop + 16, canvas.width, bottomBoundary - topBoundary);
-        ctx.clip();
-
         ctx.beginPath();
         ctx.strokeStyle = pTool === 'eraser' ? 'rgba(0,0,0,1)' : pColor;
         ctx.lineWidth = pWidth;
         ctx.globalCompositeOperation = pTool === 'eraser' ? 'destination-out' : 'source-over';
 
-        const firstPoint = points[0];
-        ctx.moveTo(firstPoint.x, getScreenY(initialLine, firstPoint.relY));
+        const lineTop = editor.getTopForLineNumber(initialLine);
+        const scrollTop = editor.getScrollTop();
+        const offset = lineTop - scrollTop + 16;
 
-        points.slice(1).forEach(point => {
-            ctx.lineTo(point.x, getScreenY(initialLine, point.relY));
-        });
+        const firstPoint = points[0];
+        ctx.moveTo(firstPoint.x, firstPoint.relY + offset);
+
+        for (let i = 1; i < points.length; i++) {
+            ctx.lineTo(points[i].x, points[i].relY + offset);
+        }
         ctx.stroke();
         ctx.restore();
     };
-
-    useEffect(() => {
-        redraw();
-    }, [drawings, context, editor]);
 
     const getCoordinates = (e) => {
         if (!canvasRef.current) return { x: 0, y: 0 };
@@ -122,26 +118,21 @@ const ScribbleOverlay = ({ fileId, drawings = [], onAddDrawing, onUndo, onClear,
         if (!editor) return;
         const { x, y } = getCoordinates(e);
 
-        // Find which line we are on
         const target = editor.getTargetAtClientPoint(e.clientX, e.clientY);
         const line = target?.position?.lineNumber || 1;
         const lineTop = editor.getTopForLineNumber(line);
         const scrollTop = editor.getScrollTop();
 
-        // Calculate relY: (y + scrollTop - 16) - lineTop
+        // relY is stored absolute relative to the model's top for that specific line
         const relY = (y + scrollTop - 16) - lineTop;
 
         setIsDrawing(true);
         setCurrentPath([{ x, relY, line }]);
-        setLineRange({ min: line, max: line });
     };
 
     const draw = (e) => {
         if (!isDrawing || !context || !editor) return;
         const { x, y } = getCoordinates(e);
-
-        const target = editor.getTargetAtClientPoint(e.clientX, e.clientY);
-        const currentLine = target?.position?.lineNumber || currentPath[0].line;
 
         const initialPoint = currentPath[0];
         const lineTop = editor.getTopForLineNumber(initialPoint.line);
@@ -149,12 +140,6 @@ const ScribbleOverlay = ({ fileId, drawings = [], onAddDrawing, onUndo, onClear,
         const relY = (y + scrollTop - 16) - lineTop;
 
         setCurrentPath(prev => [...prev, { x, relY, line: initialPoint.line }]);
-        setLineRange(prev => ({
-            min: Math.min(prev.min, currentLine),
-            max: Math.max(prev.max, currentLine)
-        }));
-
-        // We don't manually draw here anymore, redraw() handles it via state update
     };
 
     const stopDrawing = () => {
@@ -166,15 +151,12 @@ const ScribbleOverlay = ({ fileId, drawings = [], onAddDrawing, onUndo, onClear,
                 id: Date.now().toString(),
                 points: currentPath,
                 initialLine: currentPath[0].line,
-                minLine: lineRange.min,
-                maxLine: lineRange.max,
                 color: color,
                 width: lineWidth,
                 tool: tool
             });
         }
         setCurrentPath([]);
-        setLineRange({ min: Infinity, max: -Infinity });
     };
 
     return (

@@ -2040,6 +2040,51 @@ body {
   z-index: 20;
 }
 
+.monaco-editor .highlight-red {
+  background-color: rgba(255, 0, 0, 0.35) !important;
+  border-bottom: 2px solid rgba(255, 0, 0, 0.8) !important;
+  z-index: 20;
+}
+
+.monaco-editor .highlight-purple {
+  background-color: rgba(147, 51, 234, 0.35) !important;
+  border-bottom: 2px solid rgba(147, 51, 234, 0.8) !important;
+  z-index: 20;
+}
+
+/* Glassmorphism & AI Overhaul */
+.glass-container {
+  background: rgba(15, 15, 15, 0.6) !important;
+  backdrop-filter: blur(16px) saturate(180%) !important;
+  -webkit-backdrop-filter: blur(16px) saturate(180%) !important;
+  border: 1px solid rgba(255, 255, 255, 0.08) !important;
+}
+
+.ai-bubble-gradient {
+  background: linear-gradient(135deg, rgba(99, 102, 241, 0.15) 0%, rgba(168, 85, 247, 0.15) 100%) !important;
+  border: 1px solid rgba(168, 85, 247, 0.2) !important;
+}
+
+.user-bubble-solid {
+  background: var(--accent-color) !important;
+  box-shadow: 0 4px 15px rgba(99, 102, 241, 0.3) !important;
+}
+
+.learning-card {
+  background: rgba(255, 255, 255, 0.03);
+  border-radius: 12px;
+  padding: 16px;
+  margin: 12px 0;
+  border-left: 4px solid var(--accent-color);
+  transition: transform 0.2s ease;
+}
+
+.learning-card:hover {
+  transform: translateX(4px);
+  background: rgba(255, 255, 255, 0.05);
+}
+
+
 /* ============================================
    MARKETPLACE UI
    ============================================ */

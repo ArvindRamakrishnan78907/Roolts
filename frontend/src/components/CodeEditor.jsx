@@ -20,6 +20,8 @@ function CodeEditor({ isScribbleMode, scribbleTool = 'pen', scribbleColor = '#ff
     const decorationsRef = useRef([]);
     const decorationIdToHighlightId = useRef({});
     const lastContextMenuPositionRef = useRef(null);
+    const lastContextMenuHighlightIdRef = useRef(null);
+    const lastContextMenuHighlightRangeRef = useRef(null);
 
 
 
@@ -233,22 +235,49 @@ function CodeEditor({ isScribbleMode, scribbleTool = 'pen', scribbleColor = '#ff
         const isHighlightContext = editor.createContextKey('isHighlight', false);
 
         editor.onContextMenu((e) => {
-            if (e && e.target && e.target.position) {
-                lastContextMenuPositionRef.current = e.target.position;
+            if (e && e.target) {
+                const position = e.target.position || editor.getPosition();
+                lastContextMenuPositionRef.current = position;
+                lastContextMenuHighlightIdRef.current = null;
+                lastContextMenuHighlightRangeRef.current = null;
 
-                const model = editor.getModel();
-                if (model) {
-                    const decorations = model.getLineDecorations(e.target.position.lineNumber);
-                    const isHighlight = decorations.some(d => {
-                        return d.options.className &&
-                            d.options.className.includes('highlight-') &&
-                            e.target.position.column >= d.range.startColumn &&
-                            e.target.position.column <= d.range.endColumn;
-                    });
-                    isHighlightContext.set(isHighlight);
+                if (position) {
+                    const model = editor.getModel();
+                    if (model) {
+                        const decorations = model.getLineDecorations(position.lineNumber);
+                        let detectedHighlight = null;
+
+                        decorations.forEach(d => {
+                            if (detectedHighlight) return;
+                            const isMatch = d.options.className && d.options.className.includes('highlight-');
+                            if (!isMatch) return;
+
+                            const range = d.range;
+                            const inRange = position.lineNumber >= range.startLineNumber &&
+                                position.lineNumber <= range.endLineNumber &&
+                                (position.lineNumber !== range.startLineNumber || position.column >= range.startColumn) &&
+                                (position.lineNumber !== range.endLineNumber || position.column <= range.endColumn);
+
+                            if (inRange) {
+                                // Match decoration ID back to highlight ID
+                                const highlightId = decorationIdToHighlightId.current[d.id];
+                                if (highlightId) {
+                                    detectedHighlight = { id: highlightId, range: d.range };
+                                }
+                            }
+                        });
+
+                        if (detectedHighlight) {
+                            lastContextMenuHighlightIdRef.current = detectedHighlight.id;
+                            lastContextMenuHighlightRangeRef.current = detectedHighlight.range;
+                            isHighlightContext.set(true);
+                        } else {
+                            isHighlightContext.set(false);
+                        }
+                    }
+                } else {
+                    isHighlightContext.set(false);
                 }
-            } else {
-                isHighlightContext.set(false);
             }
         });
 
@@ -276,23 +305,23 @@ function CodeEditor({ isScribbleMode, scribbleTool = 'pen', scribbleColor = '#ff
             run: (ed) => {
                 const position = lastContextMenuPositionRef.current || ed.getPosition();
                 if (!position) return;
-                const model = ed.getModel();
-                const decorations = model.getLineDecorations(position.lineNumber);
 
-                const highlightDec = decorations.find(d => {
-                    const isHighlight = d.options.className && d.options.className.includes('highlight-');
-                    if (!isHighlight) return false;
-                    return position.column >= d.range.startColumn && position.column <= d.range.endColumn;
-                });
+                const activeId = activeFileIdRef.current;
+                const file = useFileStore.getState().files.find(f => f.id === activeId);
+                if (!file || !file.highlights) return;
 
-                if (highlightDec) {
-                    const highlightId = decorationIdToHighlightId.current[highlightDec.id];
-                    if (highlightId) {
-                        removeHighlightRef.current(activeFileIdRef.current, highlightId);
+                const targetId = lastContextMenuHighlightIdRef.current;
+                const targetRange = lastContextMenuHighlightRangeRef.current;
+
+                if (targetId && targetRange) {
+                    ed.setSelection(targetRange);
+                    if (window.confirm('Remove this highlight?')) {
+                        removeHighlightRef.current(activeId, targetId);
                     }
                 }
             }
         });
+
     };
 
     useEffect(() => {

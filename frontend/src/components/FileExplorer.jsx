@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
-import { FiPlus, FiX, FiTrash2, FiEdit3, FiFilePlus, FiFolder } from 'react-icons/fi';
+import { FiPlus, FiX, FiTrash2, FiEdit3, FiFilePlus, FiFolder, FiFolderPlus, FiUpload, FiDownload, FiChevronRight, FiChevronDown, FiAlertCircle } from 'react-icons/fi';
 import { useFileStore, useUIStore } from '../store';
-import FileItem from './FileItem';
+import { getFileIcon } from '../services/iconHelper';
 
 function FileExplorer() {
     const { files, activeFileId, openFile, deleteFile, renameFile, addFile, openFiles, closeFile, closeFiles, deleteFiles } = useFileStore();
@@ -11,103 +11,16 @@ function FileExplorer() {
     const fileInputRef = useRef(null);
     const folderInputRef = useRef(null);
 
-    // Close context menu on global click
-    useEffect(() => {
-        const handleClick = () => setContextMenu(null);
-        window.addEventListener('click', handleClick);
-        return () => window.removeEventListener('click', handleClick);
-    }, []);
-
-    // Get language from file extension
     const getLanguageFromExtension = (filename) => {
         const ext = filename.split('.').pop().toLowerCase();
-        const langMap = {
-            'py': 'python',
-            'js': 'javascript',
-            'jsx': 'javascript',
-            'ts': 'typescript',
-            'tsx': 'typescript',
-            'java': 'java',
-            'cpp': 'cpp',
-            'c': 'c',
-            'h': 'c',
-            'hpp': 'cpp',
-            'html': 'html',
-            'css': 'css',
-            'json': 'json',
-            'xml': 'xml',
-            'md': 'markdown',
-            'txt': 'plaintext',
-            'sql': 'sql',
-            'sh': 'shell',
-            'go': 'go',
-            'rs': 'rust',
-            'rb': 'ruby',
-            'php': 'php'
+        const map = {
+            'js': 'javascript', 'jsx': 'javascript', 'ts': 'typescript', 'tsx': 'typescript',
+            'py': 'python', 'java': 'java', 'c': 'c', 'cpp': 'cpp', 'html': 'html',
+            'css': 'css', 'json': 'json', 'md': 'markdown', 'rs': 'rust', 'go': 'go'
         };
-        return langMap[ext] || 'plaintext';
+        return map[ext] || 'plaintext';
     };
 
-    // Handle file upload
-    const handleFileUpload = async (event) => {
-        const uploadedFiles = event.target.files;
-        if (!uploadedFiles || uploadedFiles.length === 0) return;
-
-        let uploadedCount = 0;
-        for (const file of uploadedFiles) {
-            try {
-                const content = await readFileContent(file);
-                const language = getLanguageFromExtension(file.name);
-                const result = addFile(file.name, content, language);
-                if (result) {
-                    uploadedCount++;
-                } else {
-                    addNotification({ type: 'warning', message: `Skipped duplicate file: ${file.name}` });
-                }
-            } catch (error) {
-                console.error(`Failed to read file ${file.name}:`, error);
-                addNotification({ type: 'error', message: `Failed to upload ${file.name}` });
-            }
-        }
-
-        if (uploadedCount > 0) {
-            addNotification({ type: 'success', message: `Uploaded ${uploadedCount} file(s)` });
-        }
-        // Reset input
-        event.target.value = '';
-    };
-
-    // Handle folder upload
-    const handleFolderUpload = async (event) => {
-        const uploadedFiles = event.target.files;
-        if (!uploadedFiles || uploadedFiles.length === 0) return;
-
-        let uploadedCount = 0;
-        for (const file of uploadedFiles) {
-            try {
-                const content = await readFileContent(file);
-                const language = getLanguageFromExtension(file.name);
-                // Use webkitRelativePath to preserve folder structure
-                const name = file.webkitRelativePath || file.name;
-                const result = addFile(name, content, language);
-                if (result) {
-                    uploadedCount++;
-                } else {
-                    console.warn(`Skipped duplicate file: ${name}`);
-                }
-            } catch (error) {
-                console.error(`Failed to read file ${file.name}:`, error);
-            }
-        }
-
-        if (uploadedCount > 0) {
-            addNotification({ type: 'success', message: `Uploaded ${uploadedCount} file(s) from folder` });
-        }
-        // Reset input
-        event.target.value = '';
-    };
-
-    // Read file content as text
     const readFileContent = (file) => {
         return new Promise((resolve, reject) => {
             const reader = new FileReader();
@@ -117,52 +30,110 @@ function FileExplorer() {
         });
     };
 
-    const handleRename = useCallback((fileId, newName) => {
-        if (newName && newName.trim() !== '') {
-            const success = renameFile(fileId, newName);
-            if (!success) {
-                addNotification({ type: 'error', message: `File "${newName}" already exists.` });
-            }
+    const handleFileUpload = async (e) => {
+        const uploadedFiles = e.target.files;
+        if (!uploadedFiles) return;
+
+        let count = 0;
+        for (let i = 0; i < uploadedFiles.length; i++) {
+            const file = uploadedFiles[i];
+            const content = await readFileContent(file);
+            const language = getLanguageFromExtension(file.name);
+            const result = addFile(file.name, content, language);
+            if (result) count++;
         }
-        setRenamingId(null);
-    }, [renameFile, addNotification]);
+
+        if (count > 0) {
+            addNotification({ type: 'success', message: `Successfully uploaded ${count} file(s)` });
+        }
+    };
+
+    const handleFolderUpload = async (e) => {
+        const uploadedFiles = e.target.files;
+        if (!uploadedFiles) return;
+
+        let count = 0;
+        for (let i = 0; i < uploadedFiles.length; i++) {
+            const file = uploadedFiles[i];
+            const path = file.webkitRelativePath || file.name;
+            const content = await readFileContent(file);
+            const language = getLanguageFromExtension(file.name);
+            const result = addFile(path, content, language);
+            if (result) count++;
+        }
+
+        if (count > 0) {
+            addNotification({ type: 'success', message: `Successfully uploaded folder with ${count} file(s)` });
+        }
+    };
 
     const handleContextMenu = useCallback((e, fileId) => {
         e.preventDefault();
-        e.stopPropagation();
-        setContextMenu({
-            x: e.clientX,
-            y: e.clientY,
-            fileId
-        });
+        setContextMenu({ x: e.clientX, y: e.clientY, fileId });
     }, []);
 
-    const handleCloseOthers = useCallback((fileId) => {
-        const filesToClose = openFiles.filter(id => id !== fileId);
-        if (filesToClose.length > 0) {
-            closeFiles(filesToClose);
+    const handleRename = useCallback((fileId, newName) => {
+        if (newName && newName.trim() !== '') {
+            renameFile(fileId, newName);
+        }
+        setRenamingId(null);
+    }, [renameFile]);
+
+    const handleDelete = useCallback((fileId) => {
+        if (window.confirm('Delete this file?')) {
+            deleteFile(fileId);
         }
         setContextMenu(null);
-    }, [openFiles, closeFiles]);
+    }, [deleteFile]);
 
-    const handleDeleteBelow = useCallback((fileId) => {
-        const fileList = Array.isArray(files) ? files : [];
-        const index = fileList.findIndex(f => f.id === fileId);
-        if (index !== -1 && index < fileList.length - 1) {
-            const filesBelow = fileList.slice(index + 1);
-            const idsToDelete = filesBelow.map(f => f.id);
+    const handleDrop = useCallback(async (e) => {
+        e.preventDefault();
+        const items = e.dataTransfer.items;
+        if (!items) return;
 
-            if (idsToDelete.length > 0) {
-                if (window.confirm(`Are you sure you want to delete ${idsToDelete.length} files below?`)) {
-                    deleteFiles(idsToDelete);
+        let uploadedCount = 0;
+        const scanFiles = async (entry, path = '') => {
+            if (entry.isFile) {
+                const file = await new Promise((resolve) => entry.file(resolve));
+                const content = await readFileContent(file);
+                const language = getLanguageFromExtension(file.name);
+                const fullPath = path ? `${path}/${file.name}` : file.name;
+                const result = addFile(fullPath, content, language);
+                if (result) uploadedCount++;
+            } else if (entry.isDirectory) {
+                const reader = entry.createReader();
+                const entries = await new Promise((resolve) => reader.readEntries(resolve));
+                for (const child of entries) {
+                    await scanFiles(child, path ? `${path}/${entry.name}` : entry.name);
                 }
             }
+        };
+
+        for (let i = 0; i < items.length; i++) {
+            const item = items[i].webkitGetAsEntry();
+            if (item) {
+                await scanFiles(item);
+            }
         }
-        setContextMenu(null);
-    }, [files, deleteFiles]);
+
+        if (uploadedCount > 0) {
+            addNotification({ type: 'success', message: `Imported ${uploadedCount} files/folders` });
+        }
+    }, [addFile, addNotification, readFileContent, getLanguageFromExtension]);
+
+    const handleDragOver = (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+    };
 
     return (
-        <div className="file-explorer" style={{ position: 'relative' }}>
+        <div
+            className="file-explorer"
+            style={{ position: 'relative', height: '100%' }}
+            onDrop={handleDrop}
+            onDragOver={handleDragOver}
+        >
+
             {/* Hidden file inputs */}
             <input
                 type="file"
@@ -170,193 +141,150 @@ function FileExplorer() {
                 style={{ display: 'none' }}
                 multiple
                 onChange={handleFileUpload}
-                accept="*/*"
             />
             <input
                 type="file"
                 ref={folderInputRef}
                 style={{ display: 'none' }}
-                webkitdirectory=""
-                directory=""
+                webkitdirectory="true"
                 multiple
                 onChange={handleFolderUpload}
             />
 
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
-                <span style={{ fontSize: '11px', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
-                    Files
-                </span>
+            <div className="file-explorer__header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '12px 16px', borderBottom: '1px solid var(--border-color)' }}>
+                <h3 style={{ fontSize: '13px', fontWeight: 600, margin: 0 }}>Files</h3>
                 <div style={{ display: 'flex', gap: '4px' }}>
-                    <button
-                        className="btn btn--ghost btn--icon"
-                        onClick={() => fileInputRef.current?.click()}
-                        title="Open File"
-                        style={{ padding: '4px' }}
-                    >
-                        <FiFilePlus size={14} />
-                    </button>
-                    <button
-                        className="btn btn--ghost btn--icon"
-                        onClick={() => folderInputRef.current?.click()}
-                        title="Open Folder"
-                        style={{ padding: '4px' }}
-                    >
-                        <FiFolder size={14} />
-                    </button>
-                    <button
-                        className="btn btn--ghost btn--icon"
-                        onClick={() => openModal('newFile')}
-                        title="New File"
-                        style={{ padding: '4px' }}
-                    >
-                        <FiPlus size={14} />
-                    </button>
+                    <button className="btn btn--icon btn--ghost" onClick={() => openModal('newFile')} title="New File"><FiFilePlus size={16} /></button>
+                    <button className="btn btn--icon btn--ghost" onClick={() => folderInputRef.current.click()} title="Upload Folder"><FiFolderPlus size={16} /></button>
+                    <button className="btn btn--icon btn--ghost" onClick={() => fileInputRef.current.click()} title="Upload Files"><FiUpload size={16} /></button>
                 </div>
             </div>
-            {(files || []).map((file) => (
-                <FileItem
-                    key={file.id}
-                    file={file}
-                    activeFileId={activeFileId}
-                    renamingId={renamingId}
-                    openFile={openFile}
-                    handleContextMenu={handleContextMenu}
-                    handleRename={handleRename}
-                    deleteFile={deleteFile}
-                    setRenamingId={setRenamingId}
-                />
-            ))}
 
-            {/* Context Menu */}
+            <div className="file-explorer__list" style={{ padding: '8px 0', overflowY: 'auto', flex: 1 }}>
+                {Array.isArray(files) && files.length > 0 ? (
+                    files.map((file) => (
+                        <div
+                            key={file.id}
+                            className={`file-item ${file.id === activeFileId ? 'file-item--active' : ''}`}
+                            onClick={() => openFile(file.id)}
+                            onContextMenu={(e) => handleContextMenu(e, file.id)}
+                            style={{
+                                display: 'flex',
+                                alignItems: 'center',
+                                padding: '6px 16px',
+                                cursor: 'pointer',
+                                gap: '8px',
+                                position: 'relative'
+                            }}
+                        >
+                            <div style={{ width: '16px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                                {getFileIcon(file.language || 'plaintext')}
+                            </div>
+                            {renamingId === file.id ? (
+                                <input
+                                    autoFocus
+                                    className="file-item__input"
+                                    defaultValue={file.name}
+                                    onBlur={(e) => handleRename(file.id, e.target.value)}
+                                    onKeyDown={(e) => e.key === 'Enter' && handleRename(file.id, e.target.value)}
+                                    style={{
+                                        background: 'var(--bg-tertiary)',
+                                        border: '1px solid var(--accent-primary)',
+                                        color: 'white',
+                                        fontSize: '12px',
+                                        padding: '2px 4px',
+                                        width: '100%',
+                                        borderRadius: '4px'
+                                    }}
+                                    onClick={(e) => e.stopPropagation()}
+                                />
+                            ) : (
+                                <span className="file-item__name" style={{ fontSize: '12px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                                    {file.name}
+                                </span>
+                            )}
+                        </div>
+                    ))
+                ) : (
+                    <div style={{ padding: '20px', textAlign: 'center', opacity: 0.5, fontSize: '12px' }}>
+                        No files open. Click + to create one.
+                    </div>
+                )}
+            </div>
+
             {contextMenu && (
                 <div
+                    className="context-menu"
                     style={{
                         position: 'fixed',
                         top: contextMenu.y,
                         left: contextMenu.x,
                         zIndex: 1000,
                         backgroundColor: 'var(--bg-secondary)',
-                        border: '1px solid var(--border-primary)',
-                        borderRadius: '4px',
-                        boxShadow: '0 4px 6px rgba(0, 0, 0, 0.3)',
-                        padding: '4px 0',
-                        minWidth: '150px'
+                        border: '1px solid var(--border-color)',
+                        borderRadius: '6px',
+                        padding: '4px',
+                        boxShadow: '0 4px 12px rgba(0,0,0,0.3)',
+                        minWidth: '120px'
                     }}
-                    onClick={(e) => e.stopPropagation()}
+                    onClick={() => setContextMenu(null)}
                 >
-                    {openFiles.includes(contextMenu.fileId) && (
-                        <>
-                            <button
-                                style={{
-                                    display: 'flex',
-                                    alignItems: 'center',
-                                    width: '100%',
-                                    padding: '6px 12px',
-                                    border: 'none',
-                                    background: 'transparent',
-                                    color: 'var(--text-primary)',
-                                    cursor: 'pointer',
-                                    fontSize: '13px',
-                                    textAlign: 'left'
-                                }}
-                                className="context-menu-item"
-                                onClick={() => {
-                                    closeFile(contextMenu.fileId);
-                                    setContextMenu(null);
-                                }}
-                            >
-                                <FiX size={14} style={{ marginRight: '8px' }} />
-                                Close
-                            </button>
-                        </>
-                    )}
                     <button
-                        style={{
-                            display: 'flex',
-                            alignItems: 'center',
-                            width: '100%',
-                            padding: '6px 12px',
-                            border: 'none',
-                            background: 'transparent',
-                            color: 'var(--text-primary)',
-                            cursor: 'pointer',
-                            fontSize: '13px',
-                            textAlign: 'left'
-                        }}
                         className="context-menu-item"
-                        onClick={() => handleCloseOthers(contextMenu.fileId)}
+                        onClick={() => setRenamingId(contextMenu.fileId)}
+                        style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '6px 12px', width: '100%', border: 'none', background: 'transparent', color: 'white', cursor: 'pointer', textAlign: 'left', fontSize: '12px' }}
                     >
-                        <span style={{ marginRight: '8px' }}>🔄</span>
-                        Close Others
+                        <FiEdit3 size={14} /> Rename
                     </button>
                     <button
-                        style={{
-                            display: 'flex',
-                            alignItems: 'center',
-                            width: '100%',
-                            padding: '6px 12px',
-                            border: 'none',
-                            background: 'transparent',
-                            color: 'var(--text-primary)',
-                            cursor: 'pointer',
-                            fontSize: '13px',
-                            textAlign: 'left'
-                        }}
                         className="context-menu-item"
-                        onClick={() => handleDeleteBelow(contextMenu.fileId)}
+                        onClick={() => handleDelete(contextMenu.fileId)}
+                        style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '6px 12px', width: '100%', border: 'none', background: 'transparent', color: 'var(--error)', cursor: 'pointer', textAlign: 'left', fontSize: '12px' }}
                     >
-                        <FiTrash2 size={14} style={{ marginRight: '8px' }} />
-                        Delete Below
-                    </button>
-                    <div style={{ height: '1px', background: 'var(--border-primary)', margin: '4px 0' }}></div>
-
-                    <button
-                        style={{
-                            display: 'flex',
-                            alignItems: 'center',
-                            width: '100%',
-                            padding: '6px 12px',
-                            border: 'none',
-                            background: 'transparent',
-                            color: 'var(--text-primary)',
-                            cursor: 'pointer',
-                            fontSize: '13px',
-                            textAlign: 'left'
-                        }}
-                        className="context-menu-item"
-                        onClick={() => {
-                            setRenamingId(contextMenu.fileId);
-                            setContextMenu(null);
-                        }}
-                    >
-                        <FiEdit3 size={14} style={{ marginRight: '8px' }} />
-                        Rename
-                    </button>
-
-                    <button
-                        style={{
-                            display: 'flex',
-                            alignItems: 'center',
-                            width: '100%',
-                            padding: '6px 12px',
-                            border: 'none',
-                            background: 'transparent',
-                            color: 'var(--danger)',
-                            cursor: 'pointer',
-                            fontSize: '13px',
-                            textAlign: 'left'
-                        }}
-                        className="context-menu-item"
-                        onClick={() => {
-                            deleteFile(contextMenu.fileId);
-                            setContextMenu(null);
-                        }}
-                    >
-                        <FiTrash2 size={14} style={{ marginRight: '8px' }} />
-                        Delete
+                        <FiTrash2 size={14} /> Delete
                     </button>
                 </div>
             )}
+
+            <style>{`
+                .file-explorer {
+                    display: flex;
+                    flex-direction: column;
+                }
+                .file-explorer__header {
+                    margin-bottom: 8px;
+                }
+                .file-item {
+                    border-radius: 8px;
+                    margin: 2px 4px;
+                    transition: all 0.2s ease;
+                    border: 1px solid transparent;
+                }
+                .file-item:hover { 
+                    background: rgba(255, 255, 255, 0.04); 
+                    transform: translateX(2px);
+                    border-color: rgba(255,255,255,0.05);
+                }
+                .file-item--active { 
+                    background: linear-gradient(90deg, rgba(99, 102, 241, 0.15), rgba(99, 102, 241, 0.05)) !important; 
+                    border-left: 2px solid var(--accent-primary) !important;
+                    box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+                }
+                .file-item__name {
+                    font-weight: 500;
+                    letter-spacing: 0.2px;
+                }
+                .context-menu {
+                    backdrop-filter: blur(12px);
+                    background: rgba(30, 30, 30, 0.9) !important;
+                    border: 1px solid rgba(255,255,255,0.1) !important;
+                }
+                .context-menu-item:hover { 
+                    background: var(--accent-primary) !important; 
+                    color: white !important;
+                    border-radius: 4px; 
+                }
+            `}</style>
         </div>
     );
 }
