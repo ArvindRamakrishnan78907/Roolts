@@ -80,11 +80,57 @@ export default App;
                 };
             }),
 
-            updateFileContent: (fileId, content) => set((state) => ({
-                files: state.files.map((file) =>
-                    file.id === fileId ? { ...file, content, modified: true } : file
-                )
-            })),
+            // Reordering Actions
+            reorderFiles: (sourceIndex, destinationIndex) => set((state) => {
+                const newFiles = [...state.files];
+                const [reorderedItem] = newFiles.splice(sourceIndex, 1);
+                newFiles.splice(destinationIndex, 0, reorderedItem);
+                return { files: newFiles };
+            }),
+
+            reorderTabs: (sourceIndex, destinationIndex) => set((state) => {
+                const newOpenFiles = [...state.openFiles];
+                const [reorderedItem] = newOpenFiles.splice(sourceIndex, 1);
+                newOpenFiles.splice(destinationIndex, 0, reorderedItem);
+                return { openFiles: newOpenFiles };
+            }),
+
+            updateFileContent: (fileId, content) => set((state) => {
+                let updatedFiles = state.files.map((file) => {
+                    if (file.id === fileId) {
+                        let newName = file.name;
+                        let newPath = file.path;
+
+                        // Auto-rename Java files based on public class name
+                        if (file.language === 'java') {
+                            const match = content.match(/public\s+class\s+(\w+)/);
+                            if (match && match[1]) {
+                                const className = match[1];
+                                if (file.name !== `${className}.java`) {
+                                    newName = `${className}.java`;
+                                    // Update path to match new filename
+                                    // Assuming path ends with filename
+                                    newPath = file.path.substring(0, file.path.lastIndexOf('/') + 1) + newName;
+                                }
+                            }
+                        }
+
+                        return { ...file, content, name: newName, path: newPath, modified: true };
+                    }
+                    return file;
+                });
+                return { files: updatedFiles };
+            }),
+
+            moveFile: (fileId, newPath) => set((state) => {
+                const updatedFiles = state.files.map((file) => {
+                    if (file.id === fileId) {
+                        return { ...file, path: newPath };
+                    }
+                    return file;
+                });
+                return { files: updatedFiles };
+            }),
 
             addFile: (name, content = '', language = 'plaintext') => {
                 const id = Date.now().toString();
@@ -176,13 +222,6 @@ export default App;
                 })
             })),
 
-            removeHighlight: (fileId, highlightId) => set((state) => ({
-                files: state.files.map((file) =>
-                    file.id === fileId
-                        ? { ...file, highlights: (file.highlights || []).filter(h => h.id !== highlightId) }
-                        : file
-                )
-            })),
 
             deleteFile: (fileId) => set((state) => ({
                 files: state.files.filter((file) => file.id !== fileId),
@@ -337,7 +376,8 @@ export const useSettingsStore = create(
                 lineNumbers: 'on', // on, off, relative, interval
                 autoSave: false,
                 livePreview: true,
-                vimMode: false
+                vimMode: false,
+                validation: false
             },
             experimental: {
                 scribble: false,
@@ -347,6 +387,7 @@ export const useSettingsStore = create(
             },
             scribblePenSize: 3,
             scribbleEraserSize: 15,
+            appOrder: [], // Persisted order of app IDs
 
             setTheme: (theme) => set({ theme }),
             setBackgroundImage: (image) => set({ backgroundImage: image }),
@@ -368,6 +409,10 @@ export const useSettingsStore = create(
             setScribbleSize: (type, size) => set((state) => ({
                 [type === 'pen' ? 'scribblePenSize' : 'scribbleEraserSize']: size
             })),
+
+            // App Reordering Action
+            reorderApps: (newOrder) => set({ appOrder: newOrder }),
+
             resetSettings: () => set({
                 theme: 'vs-dark',
                 uiFontSize: 14,
@@ -384,7 +429,8 @@ export const useSettingsStore = create(
                     lineNumbers: 'on',
                     autoSave: false,
                     livePreview: true,
-                    vimMode: false
+                    vimMode: false,
+                    validation: false // Default to false to hide red lines
                 },
                 experimental: {
                     scribble: false,
@@ -393,7 +439,8 @@ export const useSettingsStore = create(
                     vscodeApp: true
                 },
                 scribblePenSize: 3,
-                scribbleEraserSize: 15
+                scribbleEraserSize: 15,
+                appOrder: []
             })
         }),
         {
@@ -487,7 +534,10 @@ export const useExecutionStore = create(
             setError: (error) => set({ error }),
             setExecutionTime: (executionTime) => set({ executionTime }),
             setShowOutput: (showOutput) => set({ showOutput }),
-            setInput: (input) => set({ input }),
+            setInput: (input) => {
+                const sanitizedInput = typeof input === 'string' ? input : '';
+                set({ input: sanitizedInput });
+            },
             setInputRequestOpen: (inputRequestOpen) => set({ inputRequestOpen }),
 
 
@@ -541,6 +591,7 @@ export const useTerminalStore = create(
             currentInput: '',
             cwd: '',
             isRunning: false,
+            executionOutput: [],
 
             addLine: (line) => set((state) => ({
                 lines: [...state.lines, line].slice(-500) // Keep last 500 lines
@@ -559,6 +610,12 @@ export const useTerminalStore = create(
                 lines: [{ type: 'system', content: 'Terminal cleared' }],
                 historyIndex: -1
             }),
+
+            clearExecutionOutput: () => set({ executionOutput: [] }),
+
+            addExecutionLine: (line) => set((state) => ({
+                executionOutput: [...state.executionOutput, line].slice(-500)
+            })),
 
             getFromHistory: (direction) => {
                 const state = get();

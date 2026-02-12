@@ -48,13 +48,16 @@ function CodeEditor({ isScribbleMode, scribbleTool = 'pen', scribbleColor = '#ff
 
                 // 1. Get execution errors if they exist
                 let markers = [];
-                if (!isExecuting && error) {
-                    markers = errorParser.parse(error, activeFile.language, activeFile.name);
-                }
+                // Only show errors if validation is enabled
+                if (features.validation) {
+                    if (!isExecuting && error) {
+                        markers = errorParser.parse(error, activeFile.language, activeFile.name);
+                    }
 
-                // 2. Add structural/naming validation (e.g. Java class name match)
-                const validationMarkers = errorParser.validateNaming(activeFile.content, activeFile.language, activeFile.name);
-                markers = [...markers, ...validationMarkers];
+                    // 2. Add structural/naming validation (e.g. Java class name match)
+                    const validationMarkers = errorParser.validateNaming(activeFile.content, activeFile.language, activeFile.name);
+                    markers = [...markers, ...validationMarkers];
+                }
 
                 const severityMap = {
                     8: monacoRef.current.MarkerSeverity?.Error || 8,
@@ -76,7 +79,7 @@ function CodeEditor({ isScribbleMode, scribbleTool = 'pen', scribbleColor = '#ff
                 clearTimeout(markerTimer);
             };
         }
-    }, [error, isExecuting, activeFile?.id, activeFile?.language, activeFile?.content]);
+    }, [error, isExecuting, activeFile?.id, activeFile?.language, activeFile?.content, features.validation]); // Added features.validation dependency
 
     useEffect(() => {
         if (editorRef.current && activeFile) {
@@ -115,28 +118,71 @@ function CodeEditor({ isScribbleMode, scribbleTool = 'pen', scribbleColor = '#ff
             if (!model) return;
             const map = decorationIdToHighlightId.current;
             const ids = decorationsRef.current;
+            const highlights = activeFile.highlights || [];
 
             ids.forEach(decId => {
                 const range = model.getDecorationRange(decId);
                 const highlightId = map[decId];
                 if (range && highlightId) {
-                    const original = activeFile.highlights.find(h => h.id === highlightId);
-                    if (original && (original.range.startLineNumber !== range.startLineNumber ||
-                        original.range.startColumn !== range.startColumn ||
-                        original.range.endLineNumber !== range.endLineNumber ||
-                        original.range.endColumn !== range.endColumn)) {
-                        updateHighlight(activeFileId, { ...original, range });
+                    const original = highlights.find(h => h.id === highlightId);
+                    if (original) {
+                        const hasChanged = original.range.startLineNumber !== range.startLineNumber ||
+                            original.range.startColumn !== range.startColumn ||
+                            original.range.endLineNumber !== range.endLineNumber ||
+                            original.range.endColumn !== range.endColumn;
+
+                        if (hasChanged) {
+                            updateHighlight(activeFileId, { ...original, range });
+                        }
                     }
                 }
             });
         };
 
         const disposable = editorRef.current.onDidChangeModelContent(() => {
-            setTimeout(sync, 500);
+            // Debounced sync to avoid thrashing the store
+            const timer = setTimeout(sync, 1000);
+            return () => clearTimeout(timer);
         });
 
         return () => disposable.dispose();
-    }, [activeFile, activeFileId, updateHighlight]);
+    }, [activeFileId, updateHighlight]);
+
+    // Update Monaco validation options when settings change
+    useEffect(() => {
+        if (monacoRef.current) {
+            const monaco = monacoRef.current;
+            const validate = features.validation;
+
+            if (monaco.languages.html) {
+                monaco.languages.html.htmlDefaults.setOptions({
+                    validation: { scripts: validate, styles: validate },
+                    format: { tabSize: 4 }
+                });
+            }
+            if (monaco.languages.css) {
+                monaco.languages.css.cssDefaults.setOptions({
+                    validate: validate
+                });
+            }
+            if (monaco.languages.typescript) {
+                monaco.languages.typescript.javascriptDefaults.setDiagnosticsOptions({
+                    noSemanticValidation: !validate,
+                    noSyntaxValidation: !validate
+                });
+                monaco.languages.typescript.typescriptDefaults.setDiagnosticsOptions({
+                    noSemanticValidation: !validate,
+                    noSyntaxValidation: !validate
+                });
+            }
+            if (monaco.languages.json) {
+                monaco.languages.json.jsonDefaults.setDiagnosticsOptions({
+                    validate: validate,
+                    allowComments: true
+                });
+            }
+        }
+    }, [features.validation]);
 
     const handleEditorDidMount = (editor, monaco) => {
         editorRef.current = editor;
@@ -144,26 +190,29 @@ function CodeEditor({ isScribbleMode, scribbleTool = 'pen', scribbleColor = '#ff
 
         realtimeValidator.initialize(monaco, editor);
 
+        // Initial validation settings based on store
+        const validate = features.validation;
+
         if (monaco.languages.html) {
             monaco.languages.html.htmlDefaults.setOptions({
-                validation: { scripts: true, styles: true },
+                validation: { scripts: validate, styles: validate },
                 format: { tabSize: 4 }
             });
         }
         if (monaco.languages.css) {
             monaco.languages.css.cssDefaults.setOptions({
-                validate: true
+                validate: validate
             });
         }
         if (monaco.languages.typescript) {
             monaco.languages.typescript.javascriptDefaults.setDiagnosticsOptions({
-                noSemanticValidation: false,
-                noSyntaxValidation: false
+                noSemanticValidation: !validate,
+                noSyntaxValidation: !validate
             });
         }
         if (monaco.languages.json) {
             monaco.languages.json.jsonDefaults.setDiagnosticsOptions({
-                validate: true,
+                validate: validate,
                 allowComments: true
             });
         }

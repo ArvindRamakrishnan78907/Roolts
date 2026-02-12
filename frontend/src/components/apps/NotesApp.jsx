@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, useMemo } from 'react';
+
 import ReactQuill, { Quill } from 'react-quill';
 import 'react-quill/dist/quill.snow.css';
 import ImageResize from 'quill-image-resize-module-react';
@@ -8,6 +8,7 @@ import {
     FiRefreshCw, FiCheckCircle, FiCloud, FiLock
 } from 'react-icons/fi';
 import { SiMicrosoftonedrive, SiEvernote } from 'react-icons/si';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { useNotesStore, useUIStore } from '../../store';
 
 import Webcam from 'react-webcam';
@@ -19,21 +20,9 @@ import html2canvas from 'html2canvas';
 // Register Quill modules
 Quill.register('modules/imageResize', ImageResize);
 
-// Simple localStorage-based notes storage
-const NOTES_KEY = 'roolts_notes_v2';
-
-const saveNotesToStorage = (notes) => {
-    localStorage.setItem(NOTES_KEY, JSON.stringify(notes));
-};
-
-const loadNotesFromStorage = () => {
-    try {
-        const data = localStorage.getItem(NOTES_KEY);
-        return data ? JSON.parse(data) : [];
-    } catch {
-        return [];
-    }
-};
+// Migrated to usage of useNotesStore
+// Storage functions removed
+const MIGRATION_KEY = 'roolts_notes_v2';
 
 const ProviderSelection = ({ onSelect }) => {
 
@@ -207,8 +196,12 @@ const NotesApp = ({ onBack, isWindowed }) => {
     const { onedrive, evernote } = { onedrive: { isConnected: false }, evernote: { isConnected: false } }; // Mock for now
     const { addNotification } = useUIStore();
 
-    const [notes, setNotes] = useState([]);
-    const [activeNote, setActiveNote] = useState(null);
+    const {
+        notes, activeNoteId,
+        setNotes, setActiveNote,
+        addNote, updateNote, deleteNote: deleteNoteAction
+    } = useNotesStore();
+
     const [showList, setShowList] = useState(false);
     const [showExportMenu, setShowExportMenu] = useState(false);
     const [editorContent, setEditorContent] = useState('');
@@ -217,6 +210,92 @@ const NotesApp = ({ onBack, isWindowed }) => {
     const [selectedImage, setSelectedImage] = useState(null);
     const quillRef = useRef(null);
     const webcamRef = useRef(null);
+
+    // Derive active note
+    const activeNote = notes.find(n => n.id === activeNoteId) || null;
+
+    // Migration Effect
+    useEffect(() => {
+        if (selectedProvider === 'roolts') {
+            const migrate = (key) => {
+                try {
+                    const oldData = localStorage.getItem(key);
+                    if (oldData) {
+                        const oldNotes = JSON.parse(oldData);
+                        if (Array.isArray(oldNotes) && oldNotes.length > 0) {
+                            const currentIds = new Set(notes.map(n => n.id));
+                            const uniqueOldNotes = oldNotes.filter(n => !currentIds.has(n.id));
+
+                            if (uniqueOldNotes.length > 0) {
+                                // We can't batch add with current store, so we add one by one or pass array if store supports it.
+                                // useNotesStore 'setNotes' replaces everything.
+                                // So we must append.
+                                // BUT strict mode might run this twice.
+                                // Ideally we use a store action 'mergeNotes'.
+                                // For now, we will just use setNotes with functional update if possible, but we don't have that exposed directly as an action that takes callback.
+                                // We have 'notes' from hook.
+                                // We need to be careful about closure staleness. 
+                                // Actually, 'setNotes' action just takes an array. 
+                                // So we can construct the new array and set it.
+                                // But 'notes' dependency might trigger loop if we are not careful.
+                                // We should only do this ONCE.
+                                // We can use a ref to track if migrated.
+                            }
+                            return uniqueOldNotes;
+                        }
+                    }
+                } catch (e) {
+                    console.error(`Migration failed for ${key}`, e);
+                }
+                return [];
+            };
+
+            const v2Notes = migrate('roolts_notes_v2');
+            const v1Notes = migrate('roolts_notes');
+
+            const allMigrated = [...v2Notes, ...v1Notes];
+
+            if (allMigrated.length > 0) {
+                // De-duplicate in case v1 and v2 have same notes
+                const uniqueMigrated = [];
+                const seenIds = new Set(notes.map(n => n.id));
+
+                for (const note of allMigrated) {
+                    if (!seenIds.has(note.id)) {
+                        uniqueMigrated.push(note);
+                        seenIds.add(note.id);
+                    }
+                }
+
+                if (uniqueMigrated.length > 0) {
+                    setNotes([...uniqueMigrated, ...notes]);
+                    console.log(`Migrated ${uniqueMigrated.length} notes.`);
+                    // Clear old storage
+                    localStorage.removeItem('roolts_notes_v2');
+                    localStorage.removeItem('roolts_notes');
+                }
+            }
+        }
+    }, [selectedProvider, setNotes]); // removed 'notes' dependency to run once per provider switch? No, we need current notes to check duplicates. But 'notes' changing triggers effect... potentially infinite loop if we add notes.
+    // Solution: Only run if migration keys exist. And after migration they are removed. So it won't run again.
+
+    // Auto-save Effect
+    useEffect(() => {
+        const timer = setTimeout(() => {
+            if (activeNote && (editorContent !== activeNote.content || editorTitle !== activeNote.title)) {
+                // Only save if there are changes
+                if (editorTitle !== activeNote.title || editorContent !== activeNote.content) {
+                    updateNote(activeNote.id, {
+                        title: editorTitle,
+                        content: editorContent
+                    });
+                }
+            }
+        }, 1000); // 1 second debounce
+
+        return () => clearTimeout(timer);
+    }, [editorContent, editorTitle, activeNote, updateNote]);
+    // State moved to top
 
     // Quill modules with image resize and history
     const modules = useMemo(() => ({
@@ -276,15 +355,7 @@ const NotesApp = ({ onBack, isWindowed }) => {
         }
     };
 
-    useEffect(() => {
-        if (selectedProvider === 'roolts') {
-            const loaded = loadNotesFromStorage();
-            setNotes(loaded.sort((a, b) => new Date(b.updatedAt) - new Date(a.updatedAt)));
-            if (loaded.length > 0) {
-                setActiveNote(loaded[0]);
-            }
-        }
-    }, [selectedProvider]);
+    // Old useEffect for loading notes removed. Store handles persistence.
 
     const handleConnectOneDrive = async () => {
         try {
@@ -440,11 +511,10 @@ const NotesApp = ({ onBack, isWindowed }) => {
 
     const saveNote = () => {
         if (!activeNote) return;
-        const updated = { ...activeNote, title: editorTitle, content: editorContent, updatedAt: new Date().toISOString() };
-        const newNotes = notes.map(n => n.id === updated.id ? updated : n);
-        setNotes(newNotes);
-        setActiveNote(updated);
-        saveNotesToStorage(newNotes);
+        updateNote(activeNote.id, {
+            title: editorTitle,
+            content: editorContent
+        });
     };
 
     const createNote = () => {
@@ -453,21 +523,18 @@ const NotesApp = ({ onBack, isWindowed }) => {
             title: 'New Note',
             content: '',
             createdAt: new Date().toISOString(),
-            updatedAt: new Date().toISOString()
+            updatedAt: new Date().toISOString(),
+            pinned: false,
+            tags: [],
+            color: 'default'
         };
-        const newNotes = [newNote, ...notes];
-        setNotes(newNotes);
-        setActiveNote(newNote);
+        addNote(newNote);
         setShowList(false);
-        saveNotesToStorage(newNotes);
     };
 
     const deleteNote = () => {
         if (!activeNote || !window.confirm('Delete this note?')) return;
-        const remaining = notes.filter(n => n.id !== activeNote.id);
-        setNotes(remaining);
-        setActiveNote(remaining[0] || null);
-        saveNotesToStorage(remaining);
+        deleteNoteAction(activeNote.id);
     };
 
     const deleteSelectedMedia = () => {
@@ -504,11 +571,7 @@ const NotesApp = ({ onBack, isWindowed }) => {
                     const content = quill.root.innerHTML;
                     setEditorContent(content);
                     if (activeNote) {
-                        const updated = { ...activeNote, title: editorTitle, content, updatedAt: new Date().toISOString() };
-                        const newNotes = notes.map(n => n.id === updated.id ? updated : n);
-                        setNotes(newNotes);
-                        setActiveNote(updated);
-                        saveNotesToStorage(newNotes);
+                        updateNote(activeNote.id, { content, updatedAt: new Date().toISOString() });
                     }
                 }, 100);
             }
@@ -530,11 +593,7 @@ const NotesApp = ({ onBack, isWindowed }) => {
                     const content = quill.root.innerHTML;
                     setEditorContent(content);
                     if (activeNote) {
-                        const updated = { ...activeNote, title: editorTitle, content, updatedAt: new Date().toISOString() };
-                        const newNotes = notes.map(n => n.id === updated.id ? updated : n);
-                        setNotes(newNotes);
-                        setActiveNote(updated);
-                        saveNotesToStorage(newNotes);
+                        updateNote(activeNote.id, { content, updatedAt: new Date().toISOString() });
                     }
                 }, 100);
             }
@@ -572,11 +631,7 @@ const NotesApp = ({ onBack, isWindowed }) => {
                     const content = quill.root.innerHTML;
                     setEditorContent(content);
                     if (activeNote) {
-                        const updated = { ...activeNote, title: editorTitle, content, updatedAt: new Date().toISOString() };
-                        const newNotes = notes.map(n => n.id === updated.id ? updated : n);
-                        setNotes(newNotes);
-                        setActiveNote(updated);
-                        saveNotesToStorage(newNotes);
+                        updateNote(activeNote.id, { content, updatedAt: new Date().toISOString() });
                     }
                 }, 100);
             }
@@ -727,13 +782,13 @@ ${processedContent}
                     title: title,
                     content: doc.body.innerHTML,
                     createdAt: new Date().toISOString(),
-                    updatedAt: new Date().toISOString()
+                    updatedAt: new Date().toISOString(),
+                    pinned: false,
+                    tags: [],
+                    color: 'default'
                 };
 
-                const newNotes = [newNote, ...notes];
-                setNotes(newNotes);
-                setActiveNote(newNote);
-                saveNotesToStorage(newNotes);
+                addNote(newNote);
                 setShowExportMenu(false);
                 alert('File imported successfully!');
             } catch (err) {

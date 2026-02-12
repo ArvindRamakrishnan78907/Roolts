@@ -57,9 +57,38 @@ RUNTIME_CONFIG = {
         'url': "https://go.dev/dl/go1.21.6.windows-amd64.zip",
         'zip_name': "go_portable.zip",
         'extract_dir': "go_runtime",
-        'bin_path': "go/bin", # Go has 'go' folder in zip
+        'bin_path': "go/bin",
         'executables': {
             'go': 'go.exe'
+        }
+    },
+    'kotlin': {
+        'url': "https://github.com/JetBrains/kotlin/releases/download/v1.9.22/kotlin-compiler-1.9.22.zip",
+        'zip_name': "kotlin_portable.zip",
+        'extract_dir': "kotlin",
+        'bin_path': "kotlinc/bin",
+        'executables': {
+            'kotlinc': 'kotlinc.bat',
+            'kotlin': 'kotlin.bat'
+        }
+    },
+    'csharp': {
+        'url': "https://dotnetcli.azureedge.net/dotnet/Sdk/8.0.201/dotnet-sdk-8.0.201-win-x64.zip",
+        'zip_name': "dotnet_sdk.zip",
+        'extract_dir': "dotnet",
+        'bin_path': "", # Binaries are in root of valid dotnet zip
+        'executables': {
+            'dotnet': 'dotnet.exe',
+            'csc': 'sdk/8.0.201/Roslyn/bincore/csc.dll' # CSC is often a DLL in SDK run via dotnet
+        }
+    },
+    'ruby': {
+        'url': "https://github.com/oneclick/rubyinstaller2/releases/download/RubyInstaller-3.2.2-1/rubyinstaller-3.2.2-1-x64.7z",
+        'zip_name': "ruby_portable.7z",
+        'extract_dir': "ruby",
+        'bin_path': "rubyinstaller-3.2.2-1-x64/bin",
+        'executables': {
+            'ruby': 'ruby.exe'
         }
     }
 }
@@ -99,7 +128,10 @@ def setup_runtime(lang_key):
         
         # Download
         print(f"[{lang_key}] Downloading from {config['url']}...")
-        response = requests.get(config['url'], stream=True)
+        headers = {
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
+        }
+        response = requests.get(config['url'], stream=True, headers=headers)
         response.raise_for_status()
         
         with open(zip_path, 'wb') as f:
@@ -107,18 +139,24 @@ def setup_runtime(lang_key):
                 f.write(chunk)
                 
         # Extract
-        print(f"[{lang_key}] Extracting into {extract_to}...")
-        with zipfile.ZipFile(zip_path, 'r') as zip_ref:
-            zip_ref.extractall(extract_to)
-            
-        # Cleanup zip
-        os.remove(zip_path)
+        if config['zip_name'].endswith('.7z'):
+             # Use tar to extract 7z (available on Windows 10+)
+             # tar -x -f archive.7z
+             print(f"[{lang_key}] Extracting 7z archive...")
+             subprocess.run(['tar', '-x', '-f', str(zip_path), '-C', str(extract_to)], check=True)
+        else:
+            print(f"[{lang_key}] Extracting zip archive...")
+            with zipfile.ZipFile(zip_path, 'r') as zip_ref:
+                zip_ref.extractall(extract_to)
         
+        # Cleanup zip/7z
+        os.remove(zip_path)
+
         print(f"[{lang_key}] Setup complete.")
         return str(bin_dir.absolute())
         
     except Exception as e:
-        print(f"[{lang_key}] Failed to setup runtime: {e}")
+        print(f"[{lang_key}] Failed to setup: {e}")
         return None
 
 def enable_python_pip(python_dir):

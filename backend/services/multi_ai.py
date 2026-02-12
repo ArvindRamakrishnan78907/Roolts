@@ -10,9 +10,9 @@ from abc import ABC, abstractmethod
 from typing import Optional, Dict, Any
 import asyncio
 import requests
-from huggingface_hub import InferenceClient
+# from huggingface_hub import InferenceClient
 
-from services.async_deepseek_provider import AsyncDeepSeekProvider
+# from services.async_deepseek_provider import AsyncDeepSeekProvider
 from services.ai_explainer import AIExplainerService
 from services.code_champ import CodeChampService
 
@@ -91,9 +91,20 @@ class GeminiProvider(AIProvider):
         payload = {'contents': contents}
         
         # Add system instruction if supported/provided
-        if system_prompt:
+        # Inject standard system prompt for better code if not present
+        effective_system_prompt = system_prompt
+        if not effective_system_prompt:
+             effective_system_prompt = (
+                 "You are an expert Senior Software Engineer. "
+                 "When provided with code or coding questions, verify your logic step-by-step before answering. "
+                 "Ensure all code is production-ready, clean, and follows best practices. "
+                 "If the user asks a simple question, be concise. "
+                 "If the user asks for code, provide full, working implementations."
+             )
+
+        if effective_system_prompt:
             payload['systemInstruction'] = {
-                'parts': [{'text': system_prompt}]
+                'parts': [{'text': effective_system_prompt}]
             }
         # Also check for system message in messages list
         elif messages and len(messages) > 0 and messages[0]['role'] == 'system':
@@ -255,6 +266,7 @@ class HuggingFaceProvider(AIProvider):
         if self.api_key:
             try:
                 # Use the latest HF Router for better model support
+                from huggingface_hub import InferenceClient
                 self.client = InferenceClient(
                     api_key=self.api_key,
                     base_url="https://router.huggingface.co/v1"
@@ -300,10 +312,14 @@ class HuggingFaceProvider(AIProvider):
                     content = getattr(msg, 'content', '') or ''
                     reasoning = getattr(msg, 'reasoning_content', '') or ''
                     
-                    if reasoning and content:
-                        response_text = f"<think>\n{reasoning}\n</think>\n\n{content}"
-                    else:
-                        response_text = content or reasoning
+                    if reasoning:
+                        return {
+                            'response': content,
+                            'reasoning': reasoning,
+                            'model': 'huggingface',
+                            'provider': f'Hugging Face ({self.model})'
+                        }
+                    response_text = content
             
             if not response_text:
                 print(f">>> HF Warning: Empty response received for model {self.model}")
@@ -404,26 +420,35 @@ class AISelector:
         prompt_lower = prompt.lower()
         prompt_length = len(prompt)
         
+        # === Gemini: Speed and General Knowledge (Default for speed) ===
+        # Boost Gemini significantly to make it the default fast model
+        scores['gemini'] += 8.0 
+        
         # === HuggingFace / DeepSeek-R1: Advanced Reasoning & Logic ===
+        # Only select DeepSeek/HF if explicitly needed for complex tasks
         reasoning_matches = self._count_keyword_matches(prompt, self.REASONING_KEYWORDS)
         if reasoning_matches > 0:
-            scores['huggingface'] += reasoning_matches * 3.0
+            scores['huggingface'] += reasoning_matches * 4.0 
+            scores['deepseek'] += reasoning_matches * 4.0
             
-        # Coding boost for HF as well (DeepSeek-R1 is excellent at code)
+        # Coding: Gemini 2.0 Flash is fast and good enough for most things with the new system prompt.
+        # Only switch if "complex" or "reasoning" is also present, or if it's a very specific DeepSeek request.
         code_matches = self._count_keyword_matches(prompt, self.CODE_KEYWORDS)
         if code_matches > 0:
-            scores['huggingface'] += code_matches * 1.5
-            scores['deepseek'] += code_matches * 2.0
+            # Slight boost to DeepSeek/HF but Gemini's +8.0 base should still win for simple "write a function"
+            scores['huggingface'] += code_matches * 1.0
+            scores['deepseek'] += code_matches * 1.5
         
-        # Check for code blocks
+        # Check for code blocks - strong indicator for coding model
         if '```' in prompt or 'def ' in prompt or 'function ' in prompt:
-            scores['huggingface'] += 4.0
-            scores['deepseek'] += 5.0
+             # Even here, keep Gemini competitive unless it's complex
+            scores['huggingface'] += 2.0
+            scores['deepseek'] += 3.0
         
         # === Claude: Writing and nuanced analysis ===
         writing_matches = self._count_keyword_matches(prompt, self.WRITING_KEYWORDS)
         if writing_matches > 0:
-            scores['claude'] += writing_matches * 2.5
+            scores['claude'] += writing_matches * 3.0
         
         # Long-form content preference
         if prompt_length > 500:
@@ -432,22 +457,20 @@ class AISelector:
         # === Gemini: Research and factual queries ===
         research_matches = self._count_keyword_matches(prompt, self.RESEARCH_KEYWORDS)
         if research_matches > 0:
-            scores['gemini'] += research_matches * 1.5
+            scores['gemini'] += research_matches * 2.0
         
-        # Question patterns
+        # Question patterns - Gemini is great for simple Q&A
         if prompt_lower.startswith(('what', 'how', 'why', 'when', 'where', 'who')):
             scores['gemini'] += 2.0
-            scores['huggingface'] += 1.0 # DeepSeek-R1 also good for 'why'
         
         # === Qwen: Multilingual content ===
         if self._has_non_latin(prompt):
             scores['qwen'] += 10.0  # Strong preference for non-Latin text
         
-        # Base scores (so no model gets 0)
-        # We give a slight edge to HF-R1 as the most modern default
+        # Base scores
         for model in scores:
-            scores[model] += 0.5
-        scores['huggingface'] += 1.0 
+             # Ensure no negative scores if we had them (we don't, but safe practice)
+             pass 
         
         # Filter to only available models
         return {k: v for k, v in scores.items() if k in self.available}
@@ -519,7 +542,13 @@ class MultiAIService:
         self.huggingface = HuggingFaceProvider(user_api_keys.get('huggingface') or user_api_keys.get('hf_token'))
         
         # Initialize Async Providers
-        self.async_deepseek = AsyncDeepSeekProvider(user_api_keys.get('deepseek'))
+        # Lazy import to speed up startup
+        try:
+            from services.async_deepseek_provider import AsyncDeepSeekProvider
+            self.async_deepseek = AsyncDeepSeekProvider(user_api_keys.get('deepseek'))
+        except ImportError:
+            print("Warning: AsyncDeepSeekProvider could not be imported")
+            self.async_deepseek = None
         
         # Map for selection. deeplyseek is async, others are sync.
         self.providers = {
@@ -541,6 +570,32 @@ class MultiAIService:
         # AI Selector
         available = self.get_available_models()
         self.selector = AISelector(available)
+
+    def _strip_thinking_tags(self, text: str) -> str:
+        """Removes <think>...</think> blocks from the text."""
+        if not text:
+            return text
+        
+        # Keep a copy of the original text
+        original_text = text
+        
+        # Remove <think>...</think> and any whitespace around it
+        text = re.sub(r'<think>.*?</think>', '', text, flags=re.DOTALL)
+        
+        stripped = text.strip()
+        
+        # If stripping leaves us with nothing, but there was reasoning before
+        # We might want to keep the reasoning or show a placeholder
+        if not stripped and '<think>' in original_text:
+            # Instead of returning nothing, we can extract the thinking content 
+            # and present it as the content if that's all we have
+            thinking_match = re.search(r'<think>(.*?)</think>', original_text, flags=re.DOTALL)
+            if thinking_match:
+                content = thinking_match.group(1).strip()
+                if content:
+                    return f"> *Internal Reasoning fallback:*\n\n{content}"
+        
+        return stripped
     
     def get_available_models(self) -> list:
         """Get list of configured AI models."""
@@ -552,7 +607,8 @@ class MultiAIService:
         prompt: str, 
         model: str = 'auto',
         system_prompt: str = None,
-        messages: list = None
+        messages: list = None,
+        hide_thinking: bool = False
     ) -> Dict[str, Any]:
         """Send a message to an AI model asynchronously."""
         if not prompt and (not messages or len(messages) == 0):
@@ -636,10 +692,22 @@ class MultiAIService:
             if 'error' not in result:
                 if 'response' in result and 'content' not in result:
                     result['content'] = result['response']
+                
+                # Strip thinking if requested
+                if hide_thinking:
+                    if 'content' in result:
+                        result['content'] = self._strip_thinking_tags(result['content'])
+                    if 'response' in result:
+                        result['response'] = self._strip_thinking_tags(result['response'])
+
+                if 'content' in result and not result['content'].strip() and result.get('reasoning'):
+                     # Fallback to reasoning if content is empty
+                     result['content'] = f"> *Analysis derived from reasoning:*\n\n{result.get('reasoning')}"
+
                 result['auto_selected'] = auto_selected
                 if selection:
-                    result['selection_reason'] = selection['reason']
                     result['all_scores'] = selection['scores']
+                    result['selection_id'] = selection.get('selected_model')
             
             return result
 

@@ -1,36 +1,17 @@
 import React from 'react';
 import { FiX } from 'react-icons/fi';
 import { getFileIcon } from '../services/iconHelper';
-import { useSortable } from '@dnd-kit/sortable';
-import { CSS } from '@dnd-kit/utilities';
 
-const FileItem = React.memo(({ file, activeFileId, renamingId, openFile, handleContextMenu, handleRename, deleteFile, setRenamingId }) => {
-    const {
-        attributes,
-        listeners,
-        setNodeRef,
-        transform,
-        transition,
-        isDragging,
-    } = useSortable({ id: file.id });
-
-    const style = {
-        transform: CSS.Transform.toString(transform),
-        transition,
-        opacity: isDragging ? 0.5 : 1,
-    };
+const SimpleFileItem = ({ file, activeFileId, renamingId, openFile, handleContextMenu, handleRename, deleteFile, setRenamingId }) => {
 
     return (
         <div
-            ref={setNodeRef}
-            style={style}
-            {...attributes}
-            {...listeners}
             className={`file-item ${activeFileId === file.id ? 'file-item--active' : ''}`}
             onClick={() => openFile(file.id)}
             onContextMenu={(e) => handleContextMenu(e, file.id)}
+            style={{ paddingLeft: '0', display: 'flex', alignItems: 'center', cursor: 'pointer', padding: '6px 12px' }}
         >
-            <span className="file-item__icon">{getFileIcon(file.language)}</span>
+            <span className="file-item__icon" style={{ marginRight: '8px', display: 'flex' }}>{getFileIcon(file.language)}</span>
 
             {renamingId === file.id ? (
                 <input
@@ -53,7 +34,7 @@ const FileItem = React.memo(({ file, activeFileId, renamingId, openFile, handleC
                     }}
                 />
             ) : (
-                <span className="file-item__name" style={{ flex: 1 }}>{file.name}</span>
+                <span className="file-item__name" style={{ flex: 1, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{file.name}</span>
             )}
 
             <button
@@ -69,6 +50,6 @@ const FileItem = React.memo(({ file, activeFileId, renamingId, openFile, handleC
             </button>
         </div>
     );
-});
+};
 
-export default FileItem;
+export default SimpleFileItem;

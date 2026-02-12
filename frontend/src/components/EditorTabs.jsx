@@ -2,6 +2,18 @@ import React from 'react';
 import { FiTerminal, FiX, FiTrash2, FiEdit3, FiRotateCcw, FiEdit2, FiCheckCircle } from 'react-icons/fi';
 import { LuEraser } from 'react-icons/lu';
 import { useFileStore, useExecutionStore, useSettingsStore, useUIStore } from '../store';
+import {
+    DndContext,
+    closestCenter,
+    PointerSensor,
+    useSensor,
+    useSensors,
+} from '@dnd-kit/core';
+import {
+    arrayMove,
+    SortableContext,
+    horizontalListSortingStrategy,
+} from '@dnd-kit/sortable';
 import EditorTab from './EditorTab';
 
 function EditorTabs({ isScribbleMode, toggleScribbleMode, scribbleTool, setScribbleTool, scribbleColor, setScribbleColor, onUndo, onClear }) {
@@ -14,6 +26,25 @@ function EditorTabs({ isScribbleMode, toggleScribbleMode, scribbleTool, setScrib
         ? openFiles.map((id) => files.find((f) => f.id === id)).filter(Boolean)
         : [];
 
+    const [contextMenu, setContextMenu] = React.useState(null);
+
+    // Close context menu on global click
+    React.useEffect(() => {
+        const handleClick = () => setContextMenu(null);
+        window.addEventListener('click', handleClick);
+        return () => window.removeEventListener('click', handleClick);
+    }, []);
+
+    const handleContextMenu = (e, fileId) => {
+        e.preventDefault();
+        e.stopPropagation();
+        setContextMenu({
+            x: e.clientX,
+            y: e.clientY,
+            fileId
+        });
+    };
+
     const handleCloseRight = (fileId) => {
         const index = openFiles.indexOf(fileId);
         if (index !== -1 && index < openFiles.length - 1) {
@@ -22,6 +53,7 @@ function EditorTabs({ isScribbleMode, toggleScribbleMode, scribbleTool, setScrib
                 closeFiles(filesToClose);
             }
         }
+        setContextMenu(null);
     };
 
     const handleCloseOthers = (fileId) => {
@@ -29,6 +61,7 @@ function EditorTabs({ isScribbleMode, toggleScribbleMode, scribbleTool, setScrib
         if (filesToClose.length > 0) {
             closeFiles(filesToClose);
         }
+        setContextMenu(null);
     };
 
     const handleUndo = () => {
@@ -41,20 +74,51 @@ function EditorTabs({ isScribbleMode, toggleScribbleMode, scribbleTool, setScrib
         addNotification({ type: 'success', message: 'All scribbles cleared' });
     };
 
+    // Drag and Drop for Tabs using dnd-kit
+    const sensors = useSensors(
+        useSensor(PointerSensor, {
+            activationConstraint: {
+                distance: 8,
+            },
+        })
+    );
+
+    const handleDragEnd = (event) => {
+        const { active, over } = event;
+
+        if (active.id !== over.id) {
+            const oldIndex = openFiles.indexOf(active.id);
+            const newIndex = openFiles.indexOf(over.id);
+
+            useFileStore.getState().reorderTabs(oldIndex, newIndex);
+        }
+    };
+
     return (
         <div className="editor-tabs">
-            {openFilesData.map((file) => (
-                <EditorTab
-                    key={file.id}
-                    file={file}
-                    activeFileId={activeFileId}
-                    showOutput={showOutput}
-                    setActiveFile={setActiveFile}
-                    setShowOutput={setShowOutput}
-                    closeFile={closeFile}
-                    handleContextMenu={() => { }} // Placeholder for now or add if needed
-                />
-            ))}
+            <DndContext
+                sensors={sensors}
+                collisionDetection={closestCenter}
+                onDragEnd={handleDragEnd}
+            >
+                <SortableContext
+                    items={openFiles}
+                    strategy={horizontalListSortingStrategy}
+                >
+                    {openFilesData.map((file) => (
+                        <EditorTab
+                            key={file.id}
+                            file={file}
+                            activeFileId={activeFileId}
+                            showOutput={showOutput}
+                            setActiveFile={setActiveFile}
+                            setShowOutput={setShowOutput}
+                            closeFile={closeFile}
+                            handleContextMenu={handleContextMenu}
+                        />
+                    ))}
+                </SortableContext>
+            </DndContext>
             <button
                 className={`editor-tab ${showOutput ? 'editor-tab--active' : ''}`}
                 onClick={() => setShowOutput(true)}
@@ -64,6 +128,86 @@ function EditorTabs({ isScribbleMode, toggleScribbleMode, scribbleTool, setScrib
                 <span>Output</span>
             </button>
 
+            {contextMenu && (
+                <div
+                    style={{
+                        position: 'fixed',
+                        top: contextMenu.y,
+                        left: contextMenu.x,
+                        zIndex: 1000,
+                        backgroundColor: 'var(--bg-secondary)',
+                        border: '1px solid var(--border-primary)',
+                        borderRadius: '4px',
+                        boxShadow: '0 4px 6px rgba(0, 0, 0, 0.3)',
+                        padding: '4px 0',
+                        minWidth: '150px'
+                    }}
+                    onClick={(e) => e.stopPropagation()}
+                >
+                    <button
+                        style={{
+                            display: 'flex',
+                            alignItems: 'center',
+                            width: '100%',
+                            padding: '6px 12px',
+                            border: 'none',
+                            background: 'transparent',
+                            color: 'var(--text-primary)',
+                            cursor: 'pointer',
+                            fontSize: '13px',
+                            textAlign: 'left'
+                        }}
+                        className="context-menu-item"
+                        onClick={() => handleCloseOthers(contextMenu.fileId)}
+                    >
+                        <span style={{ marginRight: '8px' }}>🔄</span>
+                        Close Others
+                    </button>
+
+                    <button
+                        style={{
+                            display: 'flex',
+                            alignItems: 'center',
+                            width: '100%',
+                            padding: '6px 12px',
+                            border: 'none',
+                            background: 'transparent',
+                            color: 'var(--text-primary)',
+                            cursor: 'pointer',
+                            fontSize: '13px',
+                            textAlign: 'left'
+                        }}
+                        className="context-menu-item"
+                        onClick={() => handleCloseRight(contextMenu.fileId)}
+                    >
+                        <span style={{ marginRight: '8px' }}>➡️</span>
+                        Close to Right
+                    </button>
+
+                    <button
+                        style={{
+                            display: 'flex',
+                            alignItems: 'center',
+                            width: '100%',
+                            padding: '6px 12px',
+                            border: 'none',
+                            background: 'transparent',
+                            color: 'var(--danger)',
+                            cursor: 'pointer',
+                            fontSize: '13px',
+                            textAlign: 'left'
+                        }}
+                        className="context-menu-item"
+                        onClick={() => {
+                            closeFile(contextMenu.fileId);
+                            setContextMenu(null);
+                        }}
+                    >
+                        <FiX size={14} style={{ marginRight: '8px' }} />
+                        Close
+                    </button>
+                </div>
+            )}
             {experimental?.scribble && (
                 <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginLeft: 'auto', paddingRight: '8px' }}>
                     {isScribbleMode && (

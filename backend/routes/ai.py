@@ -292,7 +292,7 @@ def generate_diagram():
     prompt = f"Create a {diagram_type} diagram for this {language} code:\n\n{code}"
     
     # EXECUTE ASYNC
-    result = run_async(service.chat(prompt, model='deepseek', system_prompt=system_prompt))
+    result = run_async(service.chat(prompt, model='deepseek', system_prompt=system_prompt, hide_thinking=True))
     
     if 'error' in result:
         diagram = generate_mock_diagram(code, language)
@@ -357,7 +357,8 @@ def analyze_code():
             return await service.chat(
                 f"Generate a Mermaid flowchart for this {language} code:\n\n{code}",
                 model='deepseek',
-                system_prompt="Return ONLY the Mermaid.js graph code. No markdown."
+                system_prompt="Return ONLY the Mermaid.js graph code. No markdown.",
+                hide_thinking=True
             )
 
         return await asyncio.gather(get_explanation(), get_diagram())
@@ -521,7 +522,10 @@ def chat_with_ai():
             "Your goal is to help the user understand, debug, and optimize their code. "
             "Provide specific, technical, and actionable advice. "
             "Always use markdown for code snippets. "
-            "If the user asks for changes, explain why they are beneficial."
+            "If the user asks for changes, explain why they are beneficial.\n\n"
+            "IMPORTANT: Always provide a clear, concise, and helpful final answer for the user. "
+            "If you use internal reasoning (thinking), ensure that you provide a summary or direct answer "
+            "OUTSIDE of any thinking tags so the user can actually see it."
         )
         
         messages = []
@@ -541,7 +545,8 @@ def chat_with_ai():
             prompt=query, 
             model='deepseek', # Prefer DeepSeek for coding chat
             system_prompt=system_prompt,
-            messages=messages
+            messages=messages,
+            hide_thinking=True
         ))
     except Exception as e:
         print(f"Chat Route Error: {e}")
@@ -593,7 +598,7 @@ def code_champ_analysis():
             prompt = f"Generate a Python web scraper for {url} to extract {target_data}. Return ONLY the code in a JSON object under the 'result' key."
             
             # EXECUTE ASYNC
-            result = run_async(service.chat(prompt, model='deepseek', system_prompt=system_prompt))
+            result = run_async(service.chat(prompt, model='deepseek', system_prompt=system_prompt, hide_thinking=True))
             content = result.get('response', '').strip()
             
             return jsonify({
@@ -613,7 +618,7 @@ def code_champ_analysis():
         prompt = f"Analyze this {language} code for competitive programming efficiency:\n\n{code}"
         
         # EXECUTE ASYNC
-        result = run_async(service.chat(prompt, model='deepseek', system_prompt=system_prompt))
+        result = run_async(service.chat(prompt, model='deepseek', system_prompt=system_prompt, hide_thinking=True))
     except Exception as e:
         print(f"CodeChamp Route Error: {e}")
         import traceback

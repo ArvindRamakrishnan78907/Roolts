@@ -101,7 +101,11 @@ export const executorService = {
             javascript: [/\bfunction\s+\w+\s*\(/, /\bconst\s+\w+\s*=/, /=>/],
             c: [/#include\s+<stdio\.h>/, /\bint\s+main\s*\(/],
             cpp: [/#include\s+<iostream>/, /\busing\s+namespace\s+std;/, /\bstd::cout/],
-            go: [/\bpackage\s+main\b/, /\bfunc\s+main\s*\(/, /\bimport\s+\(/]
+            cpp: [/#include\s+<iostream>/, /\busing\s+namespace\s+std;/, /\bstd::cout/],
+            go: [/\bpackage\s+main\b/, /\bfunc\s+main\s*\(/, /\bimport\s+\(/],
+            kotlin: [/\bfun\s+main\s*\(/, /\bval\s+\w+/, /\bvar\s+\w+/],
+            csharp: [/\busing\s+System;/, /\bclass\s+Program/, /\bvoid\s+Main\s*\(/],
+            ruby: [/\bdef\s+\w+/, /\bend\b/, /\bputs\b/, /\brequire\b/]
         };
 
         for (const [lang, langPatterns] of Object.entries(patterns)) {
@@ -126,7 +130,10 @@ export const executorService = {
             js: '📜',
             c: 'C',
             cpp: 'C++',
-            go: 'Go'
+            go: 'Go',
+            kotlin: 'Kotlin',
+            csharp: 'C#',
+            ruby: 'Ruby'
         };
         return icons[language.toLowerCase()] || '📄';
     }

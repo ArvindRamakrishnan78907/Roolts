@@ -14,7 +14,7 @@ import re
 from flask import Blueprint, jsonify, request
 import traceback
 from pathlib import Path
-from utils.compiler_manager import get_gcc_path, get_gplusplus_path, get_executable_path, get_runtime_root
+from utils.compiler_manager import get_gcc_path, get_gplusplus_path, get_executable_path, get_runtime_root, setup_runtime
 
 executor_bp = Blueprint('executor', __name__)
 
@@ -120,7 +120,7 @@ def execute_code():
             
             # Compile Java using portable javac if available
             javac_exe = get_executable_path('java', 'javac')
-            compile_cmd = [javac_exe, '-d', '.', fname]
+            compile_cmd = [javac_exe, '-J-Xmx64m', '-J-Xms32m', '-d', '.', fname]
             
             compile_result = subprocess.run(
                 compile_cmd,
@@ -138,7 +138,7 @@ def execute_code():
                 # Run Java using portable java if available
                 java_exe = get_executable_path('java', 'java')
                 run_result = subprocess.run(
-                    [java_exe, full_class_name],
+                    [java_exe, '-Xmx64m', '-Xms32m', full_class_name],
                     cwd=temp_dir,
                     capture_output=True,
                     text=True,
@@ -277,6 +277,156 @@ def execute_code():
             error = run_result.stderr
             success = run_result.returncode == 0
 
+        elif language == 'kotlin':
+            fname = filename if filename and filename.endswith('.kt') else 'Main.kt'
+            file_path = os.path.join(temp_dir, fname)
+            jar_name = 'output.jar'
+            jar_path = os.path.join(temp_dir, jar_name)
+            
+            with open(file_path, 'w', encoding='utf-8') as f:
+                f.write(code)
+            
+            # Use portable kotlinc
+            kotlinc_exe = get_executable_path('kotlin', 'kotlinc')
+            if kotlinc_exe == 'kotlinc': # Not found locally
+                 from utils.compiler_manager import setup_runtime
+                 setup_runtime('kotlin')
+                 kotlinc_exe = get_executable_path('kotlin', 'kotlinc')
+
+            # Compile: kotlinc Main.kt -include-runtime -d output.jar
+            compile_result = subprocess.run(
+                [kotlinc_exe, '-J-Xmx64m', '-J-Xms32m', file_path, '-include-runtime', '-d', jar_path],
+                cwd=temp_dir,
+                capture_output=True,
+                text=True,
+                timeout=60
+            )
+
+            if compile_result.returncode != 0:
+                output = compile_result.stdout
+                error = "Compilation Error:\n" + compile_result.stderr
+                success = False
+            else:
+                # Run: java -jar output.jar
+                java_exe = get_executable_path('java', 'java')
+                if java_exe == 'java':
+                     from utils.compiler_manager import setup_runtime
+                     setup_runtime('java')
+                     java_exe = get_executable_path('java', 'java')
+                     
+                run_result = subprocess.run(
+                    [java_exe, '-Xmx64m', '-Xms32m', '-jar', jar_path],
+                    cwd=temp_dir,
+                    capture_output=True,
+                    text=True,
+                    input=stdin_input,
+                    timeout=60
+                )
+                output = run_result.stdout
+                error = run_result.stderr
+                success = run_result.returncode == 0
+        
+        elif language == 'csharp' or language == 'c#':
+            # Create a simple .NET console project structure
+            dotnet_exe = get_executable_path('csharp', 'dotnet')
+            if dotnet_exe == 'dotnet':
+                 from utils.compiler_manager import setup_runtime
+                 setup_runtime('csharp')
+                 dotnet_exe = get_executable_path('csharp', 'dotnet')
+                 
+            # Prepare Dotnet environment
+            dotnet_env = os.environ.copy()
+            dotnet_root = get_runtime_root('csharp')
+            if dotnet_root:
+                dotnet_env['DOTNET_ROOT'] = dotnet_root
+                dotnet_env['PATH'] = dotnet_root + os.pathsep + dotnet_env.get('PATH', '')
+                
+            # Isolate NuGet and Dotnet profile to prevent system-wide config interference
+            # Create a dedicated home for dotnet within temp
+            dotnet_home = os.path.join(temp_dir, '.dotnet_home')
+            os.makedirs(dotnet_home, exist_ok=True)
+            dotnet_env['USERPROFILE'] = dotnet_home
+            dotnet_env['HOME'] = dotnet_home
+            dotnet_env['LOCALAPPDATA'] = os.path.join(dotnet_home, 'AppData', 'Local')
+            dotnet_env['APPDATA'] = os.path.join(dotnet_home, 'AppData', 'Roaming')
+            os.makedirs(dotnet_env['LOCALAPPDATA'], exist_ok=True)
+            os.makedirs(dotnet_env['APPDATA'], exist_ok=True)
+            
+            nuget_cache = os.path.join(temp_dir, '.nuget')
+            os.makedirs(nuget_cache, exist_ok=True)
+            dotnet_env['NUGET_PACKAGES'] = nuget_cache
+            dotnet_env['DOTNET_SKIP_FIRST_TIME_EXPERIENCE'] = 'true'
+            dotnet_env['DOTNET_CLI_TELEMETRY_OPTOUT'] = '1'
+            dotnet_env['DOTNET_MULTILEVEL_LOOKUP'] = '0'
+
+            # Create a local NuGet.config to clear fallback folders
+            nuget_config_path = os.path.join(temp_dir, 'NuGet.config')
+            with open(nuget_config_path, 'w', encoding='utf-8') as f:
+                f.write('<?xml version="1.0" encoding="utf-8"?>\n'
+                        '<configuration>\n'
+                        '  <packageSources>\n'
+                        '    <add key="nuget.org" value="https://api.nuget.org/v3/index.json" />\n'
+                        '  </packageSources>\n'
+                        '  <fallbackPackageFolders>\n'
+                        '    <clear />\n'
+                        '  </fallbackPackageFolders>\n'
+                        '</configuration>')
+
+            # Create project
+            subprocess.run(
+                [dotnet_exe, 'new', 'console', '--force'],
+                cwd=temp_dir,
+                capture_output=True,
+                text=True,
+                env=dotnet_env
+            )
+            
+            # Overwrite Program.cs
+            program_cs = os.path.join(temp_dir, 'Program.cs')
+            with open(program_cs, 'w', encoding='utf-8') as f:
+                f.write(code)
+                
+            # Run
+            run_result = subprocess.run(
+                [dotnet_exe, 'run'],
+                cwd=temp_dir,
+                capture_output=True,
+                text=True,
+                input=stdin_input,
+                timeout=60,
+                env=dotnet_env
+            )
+            
+            output = run_result.stdout
+            error = run_result.stderr
+            success = run_result.returncode == 0
+
+        elif language == 'ruby':
+            fname = filename if filename and filename.endswith('.rb') else 'script.rb'
+            file_path = os.path.join(temp_dir, fname)
+            
+            with open(file_path, 'w', encoding='utf-8') as f:
+                f.write(code)
+            
+            ruby_exe = get_executable_path('ruby', 'ruby')
+            if ruby_exe == 'ruby':
+                 from utils.compiler_manager import setup_runtime
+                 setup_runtime('ruby')
+                 ruby_exe = get_executable_path('ruby', 'ruby')
+            
+            run_result = subprocess.run(
+                [ruby_exe, file_path],
+                cwd=temp_dir,
+                capture_output=True,
+                text=True,
+                input=stdin_input,
+                timeout=60
+            )
+            
+            output = run_result.stdout
+            error = run_result.stderr
+            success = run_result.returncode == 0
+
         else:
             return jsonify({'success': False, 'error': f'Unsupported language: {language}'}), 400
 
@@ -343,5 +493,8 @@ def get_languages():
         {'id': 'java', 'name': 'Java', 'version': 'OpenJDK'},
         {'id': 'c', 'name': 'C', 'version': 'GCC'},
         {'id': 'cpp', 'name': 'C++', 'version': 'G++'},
-        {'id': 'go', 'name': 'Go', 'version': '1.x'}
+        {'id': 'go', 'name': 'Go', 'version': '1.x'},
+        {'id': 'kotlin', 'name': 'Kotlin', 'version': '1.9.x'},
+        {'id': 'csharp', 'name': 'C#', 'version': '.NET 8'},
+        {'id': 'ruby', 'name': 'Ruby', 'version': '3.2.x'}
     ])

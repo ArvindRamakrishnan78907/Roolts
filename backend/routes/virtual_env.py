@@ -18,11 +18,20 @@ from services.file_manager import get_file_manager
 # Create blueprint
 virtual_env_bp = Blueprint('virtual_env', __name__)
 
-# Initialize services
-docker_manager = get_docker_manager()
-security_validator = get_security_validator()
-package_manager = get_package_manager()
-file_manager = get_file_manager()
+# Initialize services (Lazy loaded)
+# docker_manager = get_docker_manager()
+# security_validator = get_security_validator()
+# package_manager = get_package_manager()
+# file_manager = get_file_manager()
+
+def get_services():
+    """Lazy load all services."""
+    return (
+        get_docker_manager(),
+        get_security_validator(),
+        get_package_manager(),
+        get_file_manager()
+    )
 
 
 # Authentication decorator (simplified - integrate with your auth system)
@@ -71,6 +80,7 @@ def log_action(env_id: int, action_type: str, command: str, status: str, output:
 def create_environment():
     """Create a new virtual environment."""
     try:
+        docker_manager, security_validator, package_manager, file_manager = get_services()
         data = request.get_json()
         
         # Validate required fields
@@ -161,6 +171,7 @@ def list_environments():
 def get_environment(env_id):
     """Get details of a specific environment."""
     try:
+        docker_manager, security_validator, package_manager, file_manager = get_services()
         env = VirtualEnvironment.query.filter_by(
             id=env_id,
             user_id=request.user_id
@@ -187,6 +198,7 @@ def get_environment(env_id):
 def start_environment(env_id):
     """Start a stopped environment."""
     try:
+        docker_manager, security_validator, package_manager, file_manager = get_services()
         env = VirtualEnvironment.query.filter_by(
             id=env_id,
             user_id=request.user_id
@@ -223,6 +235,7 @@ def start_environment(env_id):
 def stop_environment(env_id):
     """Stop a running environment."""
     try:
+        docker_manager, security_validator, package_manager, file_manager = get_services()
         env = VirtualEnvironment.query.filter_by(
             id=env_id,
             user_id=request.user_id
@@ -258,6 +271,7 @@ def stop_environment(env_id):
 def destroy_environment(env_id):
     """Destroy an environment and its container."""
     try:
+        docker_manager, security_validator, package_manager, file_manager = get_services()
         env = VirtualEnvironment.query.filter_by(
             id=env_id,
             user_id=request.user_id
@@ -296,6 +310,7 @@ def destroy_environment(env_id):
 def execute_command(env_id):
     """Execute a command in the environment."""
     try:
+        docker_manager, security_validator, package_manager, file_manager = get_services()
         env = VirtualEnvironment.query.filter_by(
             id=env_id,
             user_id=request.user_id
@@ -394,6 +409,7 @@ def get_logs(env_id):
 def install_packages(env_id):
     """Install packages in the environment."""
     try:
+        docker_manager, security_validator, package_manager, file_manager = get_services()
         env = VirtualEnvironment.query.filter_by(
             id=env_id,
             user_id=request.user_id
@@ -446,6 +462,7 @@ def install_packages(env_id):
 def list_packages(env_id):
     """List installed packages in the environment."""
     try:
+        docker_manager, security_validator, package_manager, file_manager = get_services()
         env = VirtualEnvironment.query.filter_by(
             id=env_id,
             user_id=request.user_id
@@ -481,6 +498,7 @@ def list_packages(env_id):
 def list_files(env_id):
     """List files in a directory."""
     try:
+        docker_manager, security_validator, package_manager, file_manager = get_services()
         env = VirtualEnvironment.query.filter_by(
             id=env_id,
             user_id=request.user_id
@@ -515,6 +533,7 @@ def list_files(env_id):
 def read_file(env_id, file_path):
     """Read a file's contents."""
     try:
+        docker_manager, security_validator, package_manager, file_manager = get_services()
         env = VirtualEnvironment.query.filter_by(
             id=env_id,
             user_id=request.user_id
@@ -555,6 +574,7 @@ def read_file(env_id, file_path):
 def write_file(env_id, file_path):
     """Write or update a file."""
     try:
+        docker_manager, security_validator, package_manager, file_manager = get_services()
         env = VirtualEnvironment.query.filter_by(
             id=env_id,
             user_id=request.user_id
@@ -608,6 +628,7 @@ def write_file(env_id, file_path):
 def delete_file(env_id, file_path):
     """Delete a file or directory."""
     try:
+        docker_manager, security_validator, package_manager, file_manager = get_services()
         env = VirtualEnvironment.query.filter_by(
             id=env_id,
             user_id=request.user_id
@@ -653,6 +674,7 @@ def delete_file(env_id, file_path):
 def create_directory(env_id):
     """Create a directory."""
     try:
+        docker_manager, security_validator, package_manager, file_manager = get_services()
         env = VirtualEnvironment.query.filter_by(
             id=env_id,
             user_id=request.user_id

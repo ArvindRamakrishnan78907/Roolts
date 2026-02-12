@@ -1,12 +1,12 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { FiBookOpen, FiZap, FiMessageSquare, FiSend, FiCode, FiActivity, FiTrash2 } from 'react-icons/fi';
+import { FiBookOpen, FiZap, FiMessageSquare, FiSend, FiCode, FiActivity, FiTrash2, FiChevronLeft } from 'react-icons/fi';
 import { useFileStore, useUIStore } from '../store';
 import { aiService } from '../services/api';
 import ReactMarkdown from 'react-markdown';
 import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter';
 import { vscDarkPlus } from 'react-syntax-highlighter/dist/esm/styles/prism';
 
-function LearningPanel() {
+function LearningPanel({ onBack }) {
     const [query, setQuery] = useState('');
     const [chatHistory, setChatHistory] = useState([]);
     const [isLoading, setIsLoading] = useState(false);
@@ -68,7 +68,18 @@ function LearningPanel() {
     return (
         <div className="learning-panel">
             <div className="learning-panel__header">
-                <h3><FiBookOpen /> Learning Assistant</h3>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+                    {onBack && (
+                        <button
+                            className="btn btn--ghost btn--icon"
+                            onClick={onBack}
+                            style={{ padding: 0, width: '24px', height: '24px', color: '#8b949e' }}
+                        >
+                            <FiChevronLeft size={20} />
+                        </button>
+                    )}
+                    <h3><FiBookOpen /> Learning Assistant</h3>
+                </div>
                 {chatHistory.length > 0 && (
                     <button
                         className="btn btn--xs btn--ghost"
@@ -166,30 +177,48 @@ function LearningPanel() {
                     display: flex;
                     flex-direction: column;
                     height: 100%;
-                    background: var(--bg-secondary);
+                    background: #0d1117;
+                    font-family: 'Inter', system-ui, -apple-system, sans-serif;
                 }
                 .learning-panel__header {
                     display: flex;
                     justify-content: space-between;
                     align-items: center;
-                    padding: 1rem;
-                    border-bottom: 1px solid var(--border-color);
-                    background: var(--bg-primary);
+                    padding: 1.25rem 1.5rem;
+                    border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+                    background: rgba(13, 17, 23, 0.8);
+                    backdrop-filter: blur(12px);
+                    z-index: 10;
                 }
                 .learning-panel__header h3 {
                     margin: 0;
                     display: flex;
                     align-items: center;
-                    gap: 0.5rem;
-                    font-size: 1rem;
+                    gap: 0.75rem;
+                    font-size: 1.1rem;
+                    font-weight: 600;
+                    color: #fff;
+                    letter-spacing: -0.02em;
+                }
+                .learning-panel__header h3 svg {
+                    color: var(--accent-color);
+                    filter: drop-shadow(0 0 5px rgba(var(--accent-rgb), 0.3));
                 }
                 .chat-window {
                     flex: 1;
                     overflow-y: auto;
-                    padding: 1rem;
+                    padding: 1.5rem;
                     display: flex;
                     flex-direction: column;
-                    gap: 1rem;
+                    gap: 1.25rem;
+                    scroll-behavior: smooth;
+                }
+                .chat-window::-webkit-scrollbar {
+                    width: 5px;
+                }
+                .chat-window::-webkit-scrollbar-thumb {
+                    background: rgba(255, 255, 255, 0.1);
+                    border-radius: 10px;
                 }
                 .chat-empty {
                     display: flex;
@@ -197,25 +226,59 @@ function LearningPanel() {
                     align-items: center;
                     justify-content: center;
                     height: 100%;
-                    opacity: 0.6;
                     text-align: center;
+                    animation: fadeIn 0.5s ease-out;
+                    padding-bottom: 2rem;
                 }
                 .chat-empty__icon {
-                    margin-bottom: 1rem;
+                    margin-bottom: 1.5rem;
                     color: var(--accent-color);
+                    filter: opacity(0.8) drop-shadow(0 0 15px rgba(var(--accent-rgb), 0.2));
+                }
+                .chat-empty h4 {
+                    font-size: 1.25rem;
+                    font-weight: 600;
+                    margin-bottom: 0.5rem;
+                    color: #fff;
+                }
+                .chat-empty p {
+                    color: #8b949e;
+                    max-width: 250px;
+                    line-height: 1.5;
                 }
                 .chat-suggestions {
                     display: flex;
                     flex-direction: column;
-                    gap: 0.5rem;
-                    margin-top: 1.5rem;
+                    gap: 0.75rem;
+                    margin-top: 2rem;
                     width: 100%;
-                    max-width: 250px;
+                    max-width: 280px;
+                }
+                .chat-suggestions .btn {
+                    justify-content: flex-start;
+                    padding: 0.75rem 1rem;
+                    background: rgba(255, 255, 255, 0.03);
+                    border: 1px solid rgba(255, 255, 255, 0.08);
+                    color: #c9d1d9;
+                    transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+                    text-transform: none;
+                    font-weight: 500;
+                }
+                .chat-suggestions .btn:hover {
+                    background: rgba(255, 255, 255, 0.08);
+                    border-color: var(--accent-color);
+                    transform: translateX(4px);
+                    color: #fff;
                 }
                 .chat-bubble {
                     display: flex;
-                    gap: 0.75rem;
-                    max-width: 90%;
+                    gap: 1rem;
+                    max-width: 95%;
+                    animation: bubbleIn 0.3s cubic-bezier(0.4, 0, 0.2, 1) forwards;
+                }
+                @keyframes bubbleIn {
+                    from { opacity: 0; transform: translateY(10px) scale(0.98); }
+                    to { opacity: 1; transform: translateY(0) scale(1); }
                 }
                 .chat-bubble--user {
                     align-self: flex-end;
@@ -225,87 +288,135 @@ function LearningPanel() {
                     align-self: flex-start;
                 }
                 .chat-bubble__avatar {
-                    width: 32px;
-                    height: 32px;
-                    border-radius: 50%;
+                    width: 36px;
+                    height: 36px;
+                    border-radius: 10px;
                     display: flex;
                     align-items: center;
                     justify-content: center;
-                    background: var(--bg-tertiary);
                     flex-shrink: 0;
+                    margin-top: 4px;
+                    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
                 }
                 .chat-bubble--user .chat-bubble__avatar {
-                     background: var(--accent-color);
+                     background: linear-gradient(135deg, var(--accent-color), #7f5af0);
                      color: white;
                 }
                 .chat-bubble--assistant .chat-bubble__avatar {
-                     background: var(--bg-tertiary);
+                     background: #161b22;
+                     border: 1px solid rgba(255, 255, 255, 0.05);
                      color: var(--accent-color);
                 }
+                .chat-bubble--system .chat-bubble__avatar {
+                     background: rgba(248, 51, 79, 0.1);
+                     color: #f85149;
+                     border: 1px solid rgba(248, 81, 73, 0.2);
+                }
                 .chat-bubble__content {
-                    background: var(--bg-tertiary);
-                    padding: 0.75rem 1rem;
-                    border-radius: 12px;
+                    padding: 1rem 1.25rem;
+                    border-radius: 16px;
                     min-width: 0;
+                    line-height: 1.6;
+                    font-size: 0.95rem;
+                    box-shadow: 0 4px 15px rgba(0, 0, 0, 0.1);
                 }
                 .chat-bubble--user .chat-bubble__content {
-                    background: var(--accent-color);
+                    background: linear-gradient(135deg, var(--accent-color), #6e55ff);
                     color: white;
-                    border-top-right-radius: 2px;
+                    border-top-right-radius: 4px;
                 }
                 .chat-bubble--assistant .chat-bubble__content {
-                    border-top-left-radius: 2px;
+                    background: #161b22;
+                    color: #d1d5da;
+                    border-top-left-radius: 4px;
+                    border: 1px solid rgba(255, 255, 255, 0.05);
                 }
+                .chat-bubble--system .chat-bubble__content {
+                    background: rgba(248, 81, 73, 0.05);
+                    border: 1px solid rgba(248, 81, 73, 0.1);
+                    border-top-left-radius: 4px;
+                }
+                .chat-bubble__content p:first-child { margin-top: 0; }
+                .chat-bubble__content p:last-child { margin-bottom: 0; }
+                
                 .chat-input-form {
-                    padding: 1rem;
-                    border-top: 1px solid var(--border-color);
-                    background: var(--bg-primary);
+                    padding: 1.25rem 1.5rem;
+                    border-top: 1px solid rgba(255, 255, 255, 0.05);
+                    background: rgba(13, 17, 23, 0.9);
+                    backdrop-filter: blur(10px);
                 }
                 .chat-input-wrapper {
                     display: flex;
-                    gap: 0.5rem;
-                    background: var(--bg-secondary);
-                    padding: 0.5rem;
-                    border-radius: 8px;
-                    border: 1px solid var(--border-color);
+                    gap: 0.75rem;
+                    background: #0d1117;
+                    padding: 0.4rem;
+                    padding-left: 1rem;
+                    border-radius: 12px;
+                    border: 1px solid rgba(255, 255, 255, 0.1);
+                    transition: border-color 0.2s, box-shadow 0.2s;
+                }
+                .chat-input-wrapper:focus-within {
+                    border-color: var(--accent-color);
+                    box-shadow: 0 0 10px rgba(var(--accent-rgb), 0.1);
                 }
                 .chat-input-field {
                     flex: 1;
                     background: transparent;
                     border: none;
-                    color: var(--text-primary);
-                    padding: 0.5rem;
+                    color: #fff;
+                    padding: 0.5rem 0;
                     outline: none;
+                    font-size: 0.95rem;
                 }
                 .chat-send-btn {
                     background: var(--accent-color);
                     color: white;
                     border: none;
-                    width: 36px;
-                    height: 36px;
-                    border-radius: 6px;
+                    width: 38px;
+                    height: 38px;
+                    border-radius: 10px;
                     display: flex;
                     align-items: center;
                     justify-content: center;
                     cursor: pointer;
-                    transition: opacity 0.2s;
+                    transition: transform 0.2s, background 0.2s;
+                    box-shadow: 0 4px 10px rgba(0, 0, 0, 0.2);
+                }
+                .chat-send-btn:hover:not(:disabled) {
+                    background: #7f5af0;
+                    transform: scale(1.05);
+                }
+                .chat-send-btn:active:not(:disabled) {
+                    transform: scale(0.95);
                 }
                 .chat-send-btn:disabled {
-                    opacity: 0.5;
+                    opacity: 0.4;
                     cursor: not-allowed;
+                    background: #333;
+                }
+                .loading .chat-bubble__content {
+                    display: flex;
+                    align-items: center;
+                    gap: 4px;
+                    padding: 0.75rem 1.25rem;
                 }
                 .typing-dot {
-                    animation: typing 1.4s infinite ease-in-out both;
-                    margin: 0 1px;
-                    font-size: 1.5rem;
-                    line-height: 1rem;
+                    width: 6px;
+                    height: 6px;
+                    background: var(--accent-color);
+                    border-radius: 50%;
+                    animation: typingPulse 1.4s infinite ease-in-out both;
                 }
-                .typing-dot:nth-child(1) { animation-delay: -0.32s; }
-                .typing-dot:nth-child(2) { animation-delay: -0.16s; }
+                .typing-dot:nth-child(2) { animation-delay: 0.2s; }
+                .typing-dot:nth-child(3) { animation-delay: 0.4s; }
                 
-                @keyframes typing {
-                    0%, 80%, 100% { transform: scale(0); }
-                    40% { transform: scale(1); }
+                @keyframes typingPulse {
+                    0%, 100% { transform: scale(0.7); opacity: 0.4; }
+                    50% { transform: scale(1.2); opacity: 1; }
+                }
+                @keyframes fadeIn {
+                    from { opacity: 0; transform: scale(0.95); }
+                    to { opacity: 1; transform: scale(1); }
                 }
             `}</style>
         </div>

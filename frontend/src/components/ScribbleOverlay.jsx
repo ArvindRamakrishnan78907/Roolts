@@ -61,39 +61,48 @@ const ScribbleOverlay = ({ fileId, drawings = [], onAddDrawing, onUndo, onClear,
         const canvas = canvasRef.current;
         ctx.clearRect(0, 0, canvas.width, canvas.height);
 
+        // Draw saved drawings
         drawings.forEach(drawing => {
-            if (drawing.points.length < 2) return;
-
-            const startLine = drawing.initialLine || 1;
-            const minL = drawing.minLine || startLine;
-            const maxL = drawing.maxLine || startLine;
-
-            // Clip to line range
-            const topBoundary = editor.getTopForLineNumber(minL);
-            const bottomBoundary = editor.getTopForLineNumber(maxL + 1);
-            const scrollTop = editor.getScrollTop();
-
-            ctx.save();
-            ctx.beginPath();
-            ctx.rect(0, topBoundary - scrollTop + 16, canvas.width, bottomBoundary - topBoundary);
-            ctx.clip();
-
-            ctx.beginPath();
-            ctx.strokeStyle = drawing.tool === 'eraser' ? 'rgba(0,0,0,1)' : drawing.color;
-            ctx.lineWidth = drawing.width;
-            ctx.globalCompositeOperation = drawing.tool === 'eraser' ? 'destination-out' : 'source-over';
-
-            const firstPoint = drawing.points[0];
-            ctx.moveTo(firstPoint.x, getScreenY(startLine, firstPoint.relY));
-
-            drawing.points.slice(1).forEach(point => {
-                ctx.lineTo(point.x, getScreenY(startLine, point.relY));
-            });
-            ctx.stroke();
-            ctx.restore();
+            renderPath(drawing.points, drawing.initialLine, drawing.minLine, drawing.maxLine, drawing.tool, drawing.color, drawing.width);
         });
 
+        // Draw current active path
+        if (isDrawing && currentPath.length > 1) {
+            const initialLine = currentPath[0].line;
+            renderPath(currentPath, initialLine, lineRange.min, lineRange.max, tool, color, lineWidth);
+        }
+
         ctx.globalCompositeOperation = 'source-over';
+    };
+
+    const renderPath = (points, initialLine, minL, maxL, pTool, pColor, pWidth) => {
+        if (points.length < 2 || !context || !editor) return;
+        const ctx = context;
+        const canvas = canvasRef.current;
+
+        // Clip to line range
+        const topBoundary = editor.getTopForLineNumber(minL);
+        const bottomBoundary = editor.getTopForLineNumber(maxL + 1);
+        const scrollTop = editor.getScrollTop();
+
+        ctx.save();
+        ctx.beginPath();
+        ctx.rect(0, topBoundary - scrollTop + 16, canvas.width, bottomBoundary - topBoundary);
+        ctx.clip();
+
+        ctx.beginPath();
+        ctx.strokeStyle = pTool === 'eraser' ? 'rgba(0,0,0,1)' : pColor;
+        ctx.lineWidth = pWidth;
+        ctx.globalCompositeOperation = pTool === 'eraser' ? 'destination-out' : 'source-over';
+
+        const firstPoint = points[0];
+        ctx.moveTo(firstPoint.x, getScreenY(initialLine, firstPoint.relY));
+
+        points.slice(1).forEach(point => {
+            ctx.lineTo(point.x, getScreenY(initialLine, point.relY));
+        });
+        ctx.stroke();
+        ctx.restore();
     };
 
     useEffect(() => {
@@ -145,20 +154,7 @@ const ScribbleOverlay = ({ fileId, drawings = [], onAddDrawing, onUndo, onClear,
             max: Math.max(prev.max, currentLine)
         }));
 
-        // Preview draw
-        context.beginPath();
-        context.strokeStyle = tool === 'eraser' ? 'rgba(0,0,0,1)' : color;
-        context.lineWidth = lineWidth;
-        context.globalCompositeOperation = tool === 'eraser' ? 'destination-out' : 'source-over';
-
-        const lastPoint = currentPath[currentPath.length - 1];
-        if (lastPoint) {
-            context.moveTo(lastPoint.x, getScreenY(initialPoint.line, lastPoint.relY));
-            context.lineTo(x, y);
-            context.stroke();
-        }
-
-        context.globalCompositeOperation = 'source-over';
+        // We don't manually draw here anymore, redraw() handles it via state update
     };
 
     const stopDrawing = () => {

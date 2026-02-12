@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
+import { FiX } from 'react-icons/fi';
 
-const WebPreview = ({ files, activeFileId }) => {
+const WebPreview = ({ files, activeFileId, onClose }) => {
     const [srcDoc, setSrcDoc] = useState('');
     const [isLoading, setIsLoading] = useState(true);
 
@@ -155,6 +156,31 @@ const WebPreview = ({ files, activeFileId }) => {
 
     return (
         <div style={{ width: '100%', height: '100%', background: 'white', position: 'relative' }}>
+            {/* Close Button */}
+            {onClose && (
+                <button
+                    onClick={onClose}
+                    style={{
+                        position: 'absolute',
+                        top: '10px',
+                        right: '10px',
+                        zIndex: 100,
+                        background: 'rgba(0,0,0,0.5)',
+                        color: 'white',
+                        border: 'none',
+                        borderRadius: '4px',
+                        padding: '8px',
+                        cursor: 'pointer',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center'
+                    }}
+                    title="Close Preview"
+                >
+                    <FiX size={16} />
+                </button>
+            )}
+
             {isLoading && (
                 <div style={{
                     position: 'absolute', top: 0, left: 0, right: 0, bottom: 0,
