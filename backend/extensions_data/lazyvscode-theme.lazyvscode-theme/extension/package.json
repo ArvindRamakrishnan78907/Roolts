@@ -1,0 +1,167 @@
+{
+  "name": "lazyvscode-theme",
+  "displayName": "LazyVscode Theme",
+  "description": "Fancy, smooth and beautiful UI like Lazyvim",
+  "author": "babyjazz",
+  "version": "6.5.2",
+  "publisher": "lazyvscode-theme",
+  "license": "MIT",
+  "repository": {
+    "url": "https://github.com/babyjazz/lazyvscode-theme"
+  },
+  "icon": "logo.png",
+  "engines": {
+    "vscode": "^1.93.0"
+  },
+  "preview": true,
+  "categories": [
+    "Other",
+    "Themes"
+  ],
+  "extensionKind": [
+    "ui"
+  ],
+  "main": "./extension.js",
+  "activationEvents": [
+    "*"
+  ],
+  "contributes": {
+    "commands": [
+      {
+        "command": "babyjazz.enable-lazyvscode-theme",
+        "title": "LazyVscode-Theme: Enable/Reload LazyVscode Theme"
+      },
+      {
+        "command": "babyjazz.disable-lazyvscode-theme",
+        "title": "LazyVscode-Theme: Disable LazyVscode Theme"
+      },
+      {
+        "command": "babyjazz.enable-shadow",
+        "title": "LazyVscode-Theme: Enable Shadow"
+      },
+      {
+        "command": "babyjazz.disable-shadow",
+        "title": "LazyVscode-Theme: Disable Shadow"
+      },
+      {
+        "command": "babyjazz.disable-follow-cursor",
+        "title": "LazyVscode-Theme: Disable Follow Cursor"
+      },
+      {
+        "command": "babyjazz.enable-snow",
+        "title": "LazyVscode-Theme: Enable Snow Effect"
+      },
+      {
+        "command": "babyjazz.disable-snow",
+        "title": "LazyVscode-Theme: Disable Snow Effect"
+      },
+      {
+        "command": "babyjazz.enable-cursor-trail",
+        "title": "LazyVscode-Theme: Enable Cursor Trail"
+      },
+      {
+        "command": "babyjazz.disable-cursor-trail",
+        "title": "LazyVscode-Theme: Disable Cursor Trail"
+      },
+      {
+        "command": "babyjazz.enable-pet-a-bulging-eyes-cow",
+        "title": "LazyVscode-Theme: Enable Pet - A BULGING EYES COW"
+      },
+      {
+        "command": "babyjazz.disable-pet-a-bulging-eyes-cow",
+        "title": "LazyVscode-Theme: Disable Pet - A BULGING EYES COW"
+      },
+      {
+        "command": "babyjazz.enable-typing-text-effect",
+        "title": "LazyVscode-Theme: Enable Typing Text Effect"
+      },
+      {
+        "command": "babyjazz.disable-typing-text-effect",
+        "title": "LazyVscode-Theme: Disable Typing Text Effect"
+      }
+    ],
+    "configuration": {
+      "type": "object",
+      "title": "LazyVscode Theme Configuration",
+      "properties": {
+        "lazyvscode-theme.follow-cursor": {
+          "type": "boolean",
+          "default": true,
+          "description": "Enable or disable the follow-cursor feature (⚡ Reload to take effect)"
+        },
+        "lazyvscode-theme.follow-cursor-speed": {
+          "type": "number",
+          "default": 15,
+          "description": "Speed of the follow-cursor animation (lower is faster, higher is slower, in ms) (⚡ Reload to take effect)"
+        },
+        "lazyvscode-theme.is-enable-snow": {
+          "type": "boolean",
+          "default": false,
+          "description": "Enable or disable the ❄️ snow effect (⚡ Reload to take effect)"
+        },
+        "lazyvscode-theme.is-enable-cursor-trail": {
+          "type": "boolean",
+          "default": false,
+          "description": "Enable or disable the ✨ cursor trail effect (⚡ Reload to take effect)"
+        },
+        "lazyvscode-theme.cursor-trail-duration": {
+          "type": "number",
+          "default": 1500,
+          "description": "Duration of the cursor trail effect in milliseconds (⚡ Reload to take effect)"
+        },
+        "lazyvscode-theme.is-enable-pet-a-bulging-eyes-cow": {
+          "type": "boolean",
+          "default": false,
+          "description": "Enable or disable the pets - 🐮 A BULGING EYES COW (⚡ Reload to take effect)"
+        },
+        "lazyvscode-theme.cursor-smooth-duration": {
+          "type": "number",
+          "default": 320,
+          "description": "Duration of the cursor smooth animation in milliseconds (⚡ Reload to take effect)"
+        },
+        "lazyvscode-theme.cursor-smooth-easing": {
+          "type": "string",
+          "default": "cubic-bezier(.34,.59,.24,1.18)",
+          "description": "Easing function of the cursor smooth animation (e.g. 'ease-out', 'ease-in', 'ease-in-out', 'linear') (⚡ Reload to take effect)"
+        },
+        "lazyvscode-theme.is-enable-typing-text-effect": {
+          "type": "boolean",
+          "default": true,
+          "description": "Enable or disable the typing text effect (⚡ Reload to take effect)"
+        },
+        "lazyvscode-theme.typing-text-animation-name": {
+          "type": "string",
+          "enum": [
+            "jumpBigToSmall",
+            "jumpUpFar",
+            "topToBottomBounce",
+            "triangleRight",
+            "jumpMiddle",
+            "scaleUpFromLeft",
+            "curveUpFromLeft"
+          ],
+          "default": "jumpBigToSmall",
+          "description": "Animation name of the typing text effect (⚡ Reload to take effect)"
+        },
+        "lazyvscode-theme.typing-text-animation-easing": {
+          "type": "string",
+          "default": "ease-in-out",
+          "description": "Easing function of the typing text effect (e.g. 'ease-out', 'ease-in', 'ease-in-out', 'linear') (⚡ Reload to take effect)"
+        }
+      }
+    }
+  },
+  "scripts": {
+    "lint": "eslint .",
+    "pretest": "pnpm run lint",
+    "test": "vscode-test"
+  },
+  "devDependencies": {
+    "@types/vscode": "^1.50.5",
+    "@types/mocha": "^10.0.10",
+    "@types/node": "20.x",
+    "eslint": "^9.25.1",
+    "@vscode/test-cli": "^0.0.10",
+    "@vscode/test-electron": "^2.5.2"
+  }
+}
